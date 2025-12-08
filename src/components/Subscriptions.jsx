@@ -564,6 +564,14 @@ export default function Subscriptions({ transactions }) {
             // Only filter transactions that:
             // 1. Are in THIS subscription's allTransactions
             // 2. AND have been explicitly reassigned to a DIFFERENT subscription
+            // 3. AND the target subscription actually exists (Active/Manual)
+
+            // Build set of all active subscription keys
+            const activeKeys = new Set([
+                ...approvedItems.map(i => i.merchantKey),
+                ...manualRecurring.map(m => m.merchantKey)
+            ]);
+
             // Use getTransactionId for consistent ID generation matching the modal
             const thisSubTransactionIds = new Set(
                 (item.allTransactions || []).map(t => getTransactionId(t))
@@ -573,7 +581,9 @@ export default function Subscriptions({ transactions }) {
             const reassignedFromThisSub = new Set(
                 Object.entries(chargeAssignments)
                     .filter(([txnId, targetKey]) =>
-                        thisSubTransactionIds.has(txnId) && targetKey !== item.merchantKey
+                        thisSubTransactionIds.has(txnId) &&
+                        targetKey !== item.merchantKey &&
+                        activeKeys.has(targetKey) // Only filter if transferred to an ACTIVE subscription
                     )
                     .map(([txnId]) => txnId)
             );
