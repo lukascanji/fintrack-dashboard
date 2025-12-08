@@ -171,6 +171,7 @@ import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users, Scissors, Pencil, Trash2, GitMerge } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 import SplitChargesModal from './SplitChargesModal';
+import { getTransactionId } from '../utils/transactionId';
 
 const EMAIL_STORAGE_KEY = 'fintrack_subscription_emails';
 const SHARED_STORAGE_KEY = 'fintrack_shared_subscriptions';
@@ -538,20 +539,14 @@ export default function Subscriptions({ transactions }) {
             assignmentsByTarget[targetKey].push(transactionId);
         });
 
-        // DEBUG: Log approvedItems to see if they have allTransactions
-        console.log('approvedItems:', approvedItems.map(i => ({
-            merchantKey: i.merchantKey,
-            count: i.count,
-            allTxnCount: i.allTransactions?.length
-        })));
-
         // Process approved detected subscriptions - filter out reassigned charges
         const processedApproved = approvedItems.map(item => {
             // Only filter transactions that:
-            // 1. Are in THIS subscription's allTransactions (have a matching ID)
+            // 1. Are in THIS subscription's allTransactions
             // 2. AND have been explicitly reassigned to a DIFFERENT subscription
+            // Use getTransactionId for consistent ID generation matching the modal
             const thisSubTransactionIds = new Set(
-                (item.allTransactions || []).map(t => t.id).filter(Boolean)
+                (item.allTransactions || []).map(t => getTransactionId(t))
             );
 
             // Get IDs of transactions from THIS sub that were reassigned elsewhere
@@ -570,7 +565,7 @@ export default function Subscriptions({ transactions }) {
 
             // Filter allTransactions to remove only the reassigned ones
             const filteredTransactions = (item.allTransactions || [])
-                .filter(t => !t.id || !reassignedFromThisSub.has(t.id));
+                .filter(t => !reassignedFromThisSub.has(getTransactionId(t)));
 
             if (filteredTransactions.length === 0 && item.allTransactions?.length > 0) {
                 // All transactions were reassigned - mark as empty
@@ -596,11 +591,12 @@ export default function Subscriptions({ transactions }) {
             .filter(m => !approvedItems.some(a => a.merchantKey === m.merchantKey))
             .map(m => {
                 // Check if this manual item has any assigned charges
-                const assignedTxnIds = assignmentsByTarget[m.merchantKey] || [];
+                const assignedTxnIds = new Set(assignmentsByTarget[m.merchantKey] || []);
 
                 // Find the actual transactions from all transactions
+                // Use getTransactionId for consistent matching with modal
                 const assignedTransactions = transactions.filter(t =>
-                    assignedTxnIds.includes(t.id)
+                    assignedTxnIds.has(getTransactionId(t))
                 );
 
                 const amounts = assignedTransactions.map(t => t.debit || t.credit || t.amount || 0);
