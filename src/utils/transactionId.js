@@ -18,9 +18,28 @@ export function getTransactionId(transaction) {
     }
 
     // Generate deterministic ID from transaction properties
-    const date = transaction.date instanceof Date
-        ? transaction.date.toISOString().split('T')[0]
-        : String(transaction.date || '').split('T')[0];
+    // Normalize date to YYYY-MM-DD format regardless of input
+    let dateStr = '';
+    if (transaction.date) {
+        let dateObj;
+        if (transaction.date instanceof Date) {
+            dateObj = transaction.date;
+        } else {
+            // Try parsing the string as a date
+            dateObj = new Date(transaction.date);
+        }
+
+        if (dateObj && !isNaN(dateObj.getTime())) {
+            // Format as YYYY-MM-DD
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            dateStr = `${year}-${month}-${day}`;
+        } else {
+            // Fallback: just use the string representation
+            dateStr = String(transaction.date);
+        }
+    }
 
     const amount = transaction.amount || transaction.debit || transaction.credit || 0;
     const amountStr = Math.abs(parseFloat(amount) || 0).toFixed(2);
@@ -31,7 +50,7 @@ export function getTransactionId(transaction) {
         .replace(/[^a-z0-9]/g, '')
         .substring(0, 20);
 
-    return `txn_${date}_${amountStr}_${description}`;
+    return `txn_${dateStr}_${amountStr}_${description}`;
 }
 
 /**
