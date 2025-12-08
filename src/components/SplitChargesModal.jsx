@@ -17,6 +17,9 @@ export default function SplitChargesModal({
     // For creating new subscriptions inline
     const [newSubName, setNewSubName] = useState('');
     const [showNewSubInput, setShowNewSubInput] = useState(null); // transactionId or null
+    // For bulk cluster new subscription input
+    const [clusterNewInput, setClusterNewInput] = useState(null); // cluster index or null
+    const [clusterNewName, setClusterNewName] = useState('');
     // Track newly created subscriptions during this session
     const [createdSubs, setCreatedSubs] = useState([]);
 
@@ -89,6 +92,63 @@ export default function SplitChargesModal({
 
     // Early return AFTER hooks
     if (!isOpen || !subscription) return null;
+
+    // Assign all charges in a cluster to a target subscription
+    const assignCluster = (clusterIndex, targetKey) => {
+        const cluster = dateClusters[clusterIndex];
+        if (!cluster) return;
+
+        if (targetKey === '__NEW__') {
+            // Will be handled by bulk new input
+            return;
+        }
+
+        // Assign all charges in this cluster
+        const newAssignments = {};
+        cluster.charges.forEach(charge => {
+            newAssignments[charge.id] = targetKey;
+        });
+
+        setAssignments(prev => ({
+            ...prev,
+            ...newAssignments
+        }));
+    };
+
+    // Create new subscription and assign all cluster charges to it
+    const createNewForCluster = (clusterIndex, name) => {
+        if (!name.trim()) return;
+
+        const cluster = dateClusters[clusterIndex];
+        if (!cluster) return;
+
+        // Create new subscription entry
+        const newKey = `manual_${name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
+        const newSub = {
+            merchantKey: newKey,
+            merchant: name,
+            displayName: name,
+            isManuallyCreated: true
+        };
+
+        setCreatedSubs(prev => [...prev, newSub]);
+
+        // Assign all charges in cluster to new subscription
+        const newAssignments = {};
+        cluster.charges.forEach(charge => {
+            newAssignments[charge.id] = newKey;
+        });
+
+        setAssignments(prev => ({
+            ...prev,
+            ...newAssignments
+        }));
+
+        // Notify parent
+        if (onCreateNewSubscription) {
+            onCreateNewSubscription(newSub);
+        }
+    };
 
     const handleAssignmentChange = (transactionId, targetKey) => {
         if (targetKey === '__NEW__') {
@@ -208,25 +268,156 @@ export default function SplitChargesModal({
                     )}
                 </p>
 
-                {/* Date Cluster Summary */}
+                {/* Date Cluster Summary - Interactive */}
                 {dateClusters.length > 1 && (
                     <div style={{
                         display: 'flex',
+                        flexDirection: 'column',
                         gap: '8px',
-                        marginBottom: '16px',
-                        flexWrap: 'wrap'
+                        marginBottom: '16px'
                     }}>
-                        {dateClusters.map((cluster, i) => (
-                            <div key={cluster.dayOfMonth} style={{
-                                padding: '6px 12px',
-                                background: `rgba(${i === 0 ? '99, 102, 241' : '249, 115, 22'}, 0.2)`,
-                                borderRadius: '16px',
-                                fontSize: '0.75rem',
-                                color: i === 0 ? 'var(--accent-primary)' : 'var(--accent-warning)'
-                            }}>
-                                Pattern {i + 1}: {cluster.label} ({cluster.count} charges)
-                            </div>
-                        ))}
+                        {dateClusters.map((cluster, i) => {
+                            // Check if all charges in this cluster are assigned
+                            const assignedCount = cluster.charges.filter(c => assignments[c.id]).length;
+                            const isFullyAssigned = assignedCount === cluster.charges.length;
+
+                            return (
+                                <div key={cluster.dayOfMonth} style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    padding: '8px 12px',
+                                    background: isFullyAssigned
+                                        ? 'rgba(34, 197, 94, 0.15)'
+                                        : `rgba(${i === 0 ? '99, 102, 241' : '249, 115, 22'}, 0.15)`,
+                                    borderRadius: '8px',
+                                    border: isFullyAssigned
+                                        ? '1px solid rgba(34, 197, 94, 0.3)'
+                                        : `1px solid rgba(${i === 0 ? '99, 102, 241' : '249, 115, 22'}, 0.3)`
+                                }}>
+                                    <div style={{
+                                        flex: 1,
+                                        fontSize: '0.85rem',
+                                        fontWeight: 500,
+                                        color: isFullyAssigned ? 'var(--accent-success)' : 'var(--text-primary)'
+                                    }}>
+                                        Pattern {i + 1}: {cluster.label}
+                                        <span style={{
+                                            color: 'var(--text-secondary)',
+                                            fontWeight: 400,
+                                            marginLeft: '8px'
+                                        }}>
+                                            ({cluster.count} charges)
+                                        </span>
+                                        {isFullyAssigned && (
+                                            <span style={{ marginLeft: '8px' }}>✓</span>
+                                        )}
+                                    </div>
+
+                                    {clusterNewInput === i ? (
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                            <input
+                                                type="text"
+                                                value={clusterNewName}
+                                                onChange={(e) => setClusterNewName(e.target.value)}
+                                                placeholder="New subscription name..."
+                                                autoFocus
+                                                style={{
+                                                    padding: '6px 10px',
+                                                    background: 'var(--bg-primary)',
+                                                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                    borderRadius: '6px',
+                                                    color: 'var(--text-primary)',
+                                                    fontSize: '0.8rem',
+                                                    width: '160px'
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        createNewForCluster(i, clusterNewName);
+                                                        setClusterNewInput(null);
+                                                        setClusterNewName('');
+                                                    }
+                                                    if (e.key === 'Escape') {
+                                                        setClusterNewInput(null);
+                                                        setClusterNewName('');
+                                                    }
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    createNewForCluster(i, clusterNewName);
+                                                    setClusterNewInput(null);
+                                                    setClusterNewName('');
+                                                }}
+                                                style={{
+                                                    padding: '6px 10px',
+                                                    background: 'var(--accent-success)',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    color: 'white',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                <Check size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setClusterNewInput(null);
+                                                    setClusterNewName('');
+                                                }}
+                                                style={{
+                                                    padding: '6px 10px',
+                                                    background: 'rgba(255, 255, 255, 0.1)',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    color: 'var(--text-secondary)',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value=""
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === '__NEW__') {
+                                                    setClusterNewInput(i);
+                                                } else if (val) {
+                                                    assignCluster(i, val);
+                                                }
+                                            }}
+                                            style={{
+                                                padding: '6px 10px',
+                                                background: 'var(--bg-primary)',
+                                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                borderRadius: '6px',
+                                                color: 'var(--text-primary)',
+                                                fontSize: '0.8rem',
+                                                cursor: 'pointer',
+                                                minWidth: '160px'
+                                            }}
+                                        >
+                                            <option value="">Assign all {cluster.count}...</option>
+                                            <option value={subscription.merchantKey}>
+                                                Keep with {subscription.displayName || subscription.merchant}
+                                            </option>
+                                            {otherSubscriptions.length > 0 && (
+                                                <optgroup label="Move to existing">
+                                                    {otherSubscriptions.map(s => (
+                                                        <option key={s.merchantKey} value={s.merchantKey}>
+                                                            {s.displayName || s.merchant}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
+                                            <option value="__NEW__">+ Create New Subscription</option>
+                                        </select>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
 
