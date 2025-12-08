@@ -403,6 +403,21 @@ export default function Subscriptions({ transactions }) {
         };
     }, []);
 
+    // Remove a manually added recurring item
+    const removeManualRecurring = (merchantKey) => {
+        setManualRecurring(prev => {
+            const updated = prev.filter(m => m.merchantKey !== merchantKey);
+            localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(updated));
+            return updated;
+        });
+        // Also remove from approved list
+        setApproved(prev => {
+            const updated = prev.filter(k => k !== merchantKey);
+            localStorage.setItem(APPROVED_KEY, JSON.stringify(updated));
+            return updated;
+        });
+    };
+
     // Merge manual recurring items into approved items
     const allApprovedItems = useMemo(() => {
         const manualItems = manualRecurring
@@ -876,6 +891,29 @@ export default function Subscriptions({ transactions }) {
                                                                         </span>
                                                                     )}
                                                                 </button>
+                                                                {/* Remove button for manual items */}
+                                                                {sub.isManual && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            removeManualRecurring(sub.merchantKey);
+                                                                        }}
+                                                                        title="Remove from recurring"
+                                                                        style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            padding: '2px 6px',
+                                                                            background: 'rgba(239, 68, 68, 0.2)',
+                                                                            border: 'none',
+                                                                            borderRadius: '10px',
+                                                                            color: 'var(--accent-danger)',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '0.6rem'
+                                                                        }}
+                                                                    >
+                                                                        <X size={10} />
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                                                                 {sub.frequency} • {sub.count} charges
