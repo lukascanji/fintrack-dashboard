@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Search, ChevronDown, ChevronUp, CreditCard, Building2, Calendar, Users, Plus, Check, X, Edit2, RefreshCw } from 'lucide-react';
 import { filterByDateRange } from './DateRangeFilter';
 import { saveCategoryRule, getMerchantKey } from '../utils/categorize';
+import { useTransactions } from '../context/TransactionContext';
 
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const PEOPLE_LIST_KEY = 'fintrack_people_list';
@@ -29,7 +30,7 @@ function getAccountType(transaction) {
     return 'Unknown';
 }
 
-export default function TransactionTable({ transactions, showToast, onRecategorize }) {
+export default function TransactionTable({ showToast }) {
     const [search, setSearch] = useState('');
     const [sortField, setSortField] = useState('date');
     const [sortDir, setSortDir] = useState('desc');
@@ -44,100 +45,22 @@ export default function TransactionTable({ transactions, showToast, onRecategori
     const [forceRefresh, setForceRefresh] = useState(0);
     const [exitingIds, setExitingIds] = useState(new Set());
 
-    // Load person names from localStorage
-    const [personNames, setPersonNames] = useState(() => {
-        try {
-            const saved = localStorage.getItem(NAMES_STORAGE_KEY);
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    });
+    // --- Global State from Context ---
+    const {
+        personNames, setPersonNames,
+        peopleList, setPeopleList,
+        globalRenames,
+        approvedItems, setApprovedItems,
+        transactions, recategorizeAll
+    } = useTransactions();
 
-    // Save person names to localStorage
-    useEffect(() => {
-        localStorage.setItem(NAMES_STORAGE_KEY, JSON.stringify(personNames));
-    }, [personNames]);
+    // Aliases for compatibility
+    const onRecategorize = recategorizeAll;
 
-    // Get unique names
-    const uniqueNames = useMemo(() => {
-        const allNames = Object.values(personNames).filter(n => n && n.trim());
-        return [...new Set(allNames)];
-    }, [personNames]);
-
-    // Unified people list (shared across all tabs)
-    const [peopleList, setPeopleList] = useState(() => {
-        try {
-            const saved = localStorage.getItem(PEOPLE_LIST_KEY);
-            return saved ? JSON.parse(saved) : ['You'];
-        } catch {
-            return ['You'];
-        }
-    });
-
-    // Save people list to localStorage
-    useEffect(() => {
-        localStorage.setItem(PEOPLE_LIST_KEY, JSON.stringify(peopleList));
-    }, [peopleList]);
-
-    // Load global renames from localStorage
-    const [globalRenames, setGlobalRenames] = useState(() => {
-        try {
-            const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    });
-
-    // Listen for localStorage changes (from Recurring tab)
-    // Note: 'storage' event only fires cross-tab, so we also check on focus
-    useEffect(() => {
-        const handleStorageChange = () => {
-            try {
-                const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
-                setGlobalRenames(saved ? JSON.parse(saved) : {});
-            } catch {
-                // ignore
-            }
-        };
-        window.addEventListener('storage', handleStorageChange);
-        window.addEventListener('focus', handleStorageChange);
-        document.addEventListener('visibilitychange', handleStorageChange);
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-            window.removeEventListener('focus', handleStorageChange);
-            document.removeEventListener('visibilitychange', handleStorageChange);
-        };
-    }, []);
-
-    // Load approved recurring list from localStorage
-    const [approvedRecurring, setApprovedRecurring] = useState(() => {
-        try {
-            const saved = localStorage.getItem(APPROVED_KEY);
-            return saved ? JSON.parse(saved) : [];
-        } catch {
-            return [];
-        }
-    });
-
-    // Listen for approved list changes from Recurring tab
-    useEffect(() => {
-        const handleApprovedChange = () => {
-            try {
-                const saved = localStorage.getItem(APPROVED_KEY);
-                setApprovedRecurring(saved ? JSON.parse(saved) : []);
-            } catch {
-                // ignore
-            }
-        };
-        window.addEventListener('storage', handleApprovedChange);
-        window.addEventListener('focus', handleApprovedChange);
-        return () => {
-            window.removeEventListener('storage', handleApprovedChange);
-            window.removeEventListener('focus', handleApprovedChange);
-        };
-    }, []);
+    // Aliases for compatibility
+    const approvedRecurring = approvedItems;
+    const setApprovedRecurring = setApprovedItems;
+    // ---------------------------------
 
     // Check if a transaction is part of an approved recurring item
     const isRecurring = (txn) => {

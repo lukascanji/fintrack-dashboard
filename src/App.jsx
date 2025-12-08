@@ -11,48 +11,18 @@ import Subscriptions from './components/Subscriptions';
 import CalendarView from './components/CalendarView';
 import People from './components/People';
 import DateRangeFilter, { filterByDateRange } from './components/DateRangeFilter';
-import { calculateStats } from './utils/parseCSV';
+import { calculateStats } from './utils/stats';
 import { categorizeMerchant } from './utils/categorize';
 import Toast from './components/Toast';
+import { useTransactions } from './context/TransactionContext';
 import './App.css';
 
-const STORAGE_KEY = 'fintrack_transactions';
-
-// Helper to serialize/deserialize dates
-function serializeTransactions(transactions) {
-  return transactions.map(t => ({
-    ...t,
-    date: t.date.toISOString()
-  }));
-}
-
-function deserializeTransactions(data) {
-  return data.map(t => {
-    // Re-categorize based on current rules (including user-defined)
-    const { merchant, category } = categorizeMerchant(t.description);
-    return {
-      ...t,
-      date: new Date(t.date),
-      merchant,
-      category
-    };
-  });
-}
-
-
 function App() {
-  const [transactions, setTransactions] = useState(() => {
-    // Load from localStorage on initial render
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return deserializeTransactions(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.error('Error loading saved data:', e);
-    }
-    return [];
-  });
+  const {
+    transactions,
+    clearTransactions
+  } = useTransactions();
+
   const [activeView, setActiveView] = useState('dashboard');
   const [dateRange, setDateRange] = useState('all');
   const [toast, setToast] = useState(null);
@@ -62,26 +32,6 @@ function App() {
     setToast({ message, type, key: Date.now() });
   }, []);
 
-  // Recategorize all transactions based on current rules
-  const recategorizeAll = useCallback(() => {
-    setTransactions(prev => {
-      const updated = prev.map(t => {
-        const { merchant, category } = categorizeMerchant(t.description);
-        return { ...t, merchant, category };
-      });
-      return updated;
-    });
-  }, []);
-
-  // Save to localStorage whenever transactions change
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeTransactions(transactions)));
-    } catch (e) {
-      console.error('Error saving data:', e);
-    }
-  }, [transactions]);
-
   // Filter transactions by date range
   const filteredTransactions = useMemo(() =>
     filterByDateRange(transactions, dateRange),
@@ -90,21 +40,13 @@ function App() {
 
   const stats = useMemo(() => calculateStats(filteredTransactions), [filteredTransactions]);
 
-  const handleDataLoaded = useCallback((newTransactions) => {
-    setTransactions(prev => {
-      // Merge and deduplicate by id
-      const existingIds = new Set(prev.map(t => t.id));
-      const unique = newTransactions.filter(t => !existingIds.has(t.id));
-      return [...prev, ...unique];
-    });
-  }, []);
-
   const handleClearData = useCallback(() => {
     if (window.confirm('Are you sure you want to clear all transaction data?')) {
-      setTransactions([]);
-      localStorage.removeItem(STORAGE_KEY);
+      clearTransactions();
     }
-  }, []);
+  }, [clearTransactions]);
+
+
 
   const handleExportData = useCallback(() => {
     if (transactions.length === 0) return;
@@ -222,7 +164,7 @@ function App() {
             <div className="section-header">
               <h1 className="section-title">Import Data</h1>
             </div>
-            <FileUpload onDataLoaded={handleDataLoaded} existingTransactions={transactions} />
+            <FileUpload />
           </>
         )}
 
@@ -294,7 +236,7 @@ function App() {
                 </div>
               </div>
             ) : (
-              <TransactionTable transactions={transactions} showToast={showToast} onRecategorize={recategorizeAll} />
+              <TransactionTable showToast={showToast} />
             )}
           </>
         )}
@@ -319,7 +261,7 @@ function App() {
                 </div>
               </div>
             ) : (
-              <Subscriptions transactions={transactions} />
+              <Subscriptions />
             )}
           </>
         )}
@@ -344,7 +286,7 @@ function App() {
                 </div>
               </div>
             ) : (
-              <CalendarView transactions={transactions} />
+              <CalendarView />
             )}
           </>
         )}
@@ -369,7 +311,7 @@ function App() {
                 </div>
               </div>
             ) : (
-              <People transactions={transactions} />
+              <People />
             )}
           </>
         )}

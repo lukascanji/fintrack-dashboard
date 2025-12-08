@@ -1,60 +1,36 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Users, ArrowUpRight, ArrowDownLeft, Check, Plus, X, Clock, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { useTransactions } from '../context/TransactionContext';
 
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const SETTLEMENTS_STORAGE_KEY = 'fintrack_person_settlements';
 const PEOPLE_LIST_KEY = 'fintrack_people_list';
 
-export default function People({ transactions }) {
+export default function People() {
     const [view, setView] = useState('people'); // 'people' or 'all'
     const [nameSelectorOpen, setNameSelectorOpen] = useState(null);
     const [newNameInput, setNewNameInput] = useState('');
     const [expandedPerson, setExpandedPerson] = useState(null);
 
     // Load saved names from localStorage
-    const [names, setNames] = useState(() => {
-        try {
-            // Check both old and new keys for backwards compatibility
-            const saved = localStorage.getItem(NAMES_STORAGE_KEY) || localStorage.getItem('fintrack_etransfer_names');
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    });
+    // --- Global State from Context ---
+    const {
+        transactions,
+        personNames, setPersonNames,
+        settlements, setSettlements,
+        peopleList, setPeopleList
+    } = useTransactions();
 
-    // Load settlements from localStorage
-    const [settlements, setSettlements] = useState(() => {
-        try {
-            const saved = localStorage.getItem(SETTLEMENTS_STORAGE_KEY) || localStorage.getItem('fintrack_etransfer_settlements');
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    });
-
-    // Save to localStorage
-    useEffect(() => {
-        localStorage.setItem(NAMES_STORAGE_KEY, JSON.stringify(names));
-    }, [names]);
-
-    useEffect(() => {
-        localStorage.setItem(SETTLEMENTS_STORAGE_KEY, JSON.stringify(settlements));
-    }, [settlements]);
+    // Aliases for backward compatibility
+    const names = personNames;
+    const setNames = setPersonNames;
+    // ---------------------------------
 
     // Pre-defined people list (for quick selection)
-    const [peopleList, setPeopleList] = useState(() => {
-        try {
-            const saved = localStorage.getItem(PEOPLE_LIST_KEY);
-            return saved ? JSON.parse(saved) : ['You'];
-        } catch {
-            return ['You'];
-        }
-    });
+
     const [newPersonInput, setNewPersonInput] = useState('');
 
-    useEffect(() => {
-        localStorage.setItem(PEOPLE_LIST_KEY, JSON.stringify(peopleList));
-    }, [peopleList]);
+
 
     const addPerson = () => {
         const name = newPersonInput.trim();
@@ -705,36 +681,4 @@ export default function People({ transactions }) {
 }
 
 // Export assignName function and state getter for use in TransactionTable
-export function usePeopleNames() {
-    const [names, setNames] = useState(() => {
-        try {
-            const saved = localStorage.getItem(NAMES_STORAGE_KEY) || localStorage.getItem('fintrack_etransfer_names');
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    });
 
-    useEffect(() => {
-        localStorage.setItem(NAMES_STORAGE_KEY, JSON.stringify(names));
-    }, [names]);
-
-    const uniqueNames = useMemo(() => {
-        const allNames = Object.values(names).filter(n => n && n.trim());
-        return [...new Set(allNames)].sort();
-    }, [names]);
-
-    const assignName = (txnId, name) => {
-        setNames(prev => ({ ...prev, [txnId]: name }));
-    };
-
-    const removeName = (txnId) => {
-        setNames(prev => {
-            const updated = { ...prev };
-            delete updated[txnId];
-            return updated;
-        });
-    };
-
-    return { names, uniqueNames, assignName, removeName };
-}

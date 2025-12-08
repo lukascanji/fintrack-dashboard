@@ -2,7 +2,11 @@ import { useCallback, useState } from 'react';
 import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Copy, X, Eye, Check, AlertTriangle } from 'lucide-react';
 import { parseMultipleCSVs, previewCSV } from '../utils/parseCSV';
 
-export default function FileUpload({ onDataLoaded, existingTransactions = [] }) {
+import { useTransactions } from '../context/TransactionContext';
+
+export default function FileUpload() {
+    const { transactions: existingTransactions, addTransactions } = useTransactions();
+
     const [isDragging, setIsDragging] = useState(false);
     const [loading, setLoading] = useState(false);
     const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -57,7 +61,7 @@ export default function FileUpload({ onDataLoaded, existingTransactions = [] }) 
         }
 
         if (result.transactions.length > 0) {
-            onDataLoaded(result.transactions);
+            addTransactions(result.transactions);
         }
         setLoading(false);
     };

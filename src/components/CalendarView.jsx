@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw, X, Users, ArrowDownLeft } from 'lucide-react';
 import { getCategoryColor, getMerchantKey } from '../utils/categorize';
-import { detectSubscriptions } from './Subscriptions';
+import { detectSubscriptions } from '../features/recurring/utils/recurringUtils';
+
+import { useTransactions } from '../context/TransactionContext';
 
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const GLOBAL_RENAMES_KEY = 'fintrack_global_renames';
@@ -25,96 +27,23 @@ function getFirstDayOfMonth(year, month) {
     return new Date(year, month, 1).getDay();
 }
 
-export default function CalendarView({ transactions }) {
+export default function CalendarView() {
     const today = new Date();
     const [currentYear, setCurrentYear] = useState(today.getFullYear());
     const [currentMonth, setCurrentMonth] = useState(today.getMonth());
     const [selectedDate, setSelectedDate] = useState(null);
 
-    // Load person names from localStorage
-    const [personNames, setPersonNames] = useState(() => {
-        try {
-            const saved = localStorage.getItem(NAMES_STORAGE_KEY);
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    });
+    // --- Global State from Context ---
+    const {
+        transactions,
+        personNames,
+        globalRenames,
+        approvedItems
+    } = useTransactions();
 
-    // Listen for localStorage changes from other components
-    useEffect(() => {
-        const handleStorageChange = () => {
-            try {
-                const saved = localStorage.getItem(NAMES_STORAGE_KEY);
-                setPersonNames(saved ? JSON.parse(saved) : {});
-            } catch {
-                setPersonNames({});
-            }
-        };
-        window.addEventListener('storage', handleStorageChange);
-        // Also check on focus
-        window.addEventListener('focus', handleStorageChange);
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-            window.removeEventListener('focus', handleStorageChange);
-        };
-    }, []);
-
-    // Load global renames from localStorage
-    const [globalRenames, setGlobalRenames] = useState(() => {
-        try {
-            const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    });
-
-    // Listen for global renames changes
-    useEffect(() => {
-        const handleRenameChange = () => {
-            try {
-                const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
-                setGlobalRenames(saved ? JSON.parse(saved) : {});
-            } catch {
-                // ignore
-            }
-        };
-        window.addEventListener('storage', handleRenameChange);
-        window.addEventListener('focus', handleRenameChange);
-        return () => {
-            window.removeEventListener('storage', handleRenameChange);
-            window.removeEventListener('focus', handleRenameChange);
-        };
-    }, []);
-
-    // Load approved recurring items from localStorage
-    const [approved, setApproved] = useState(() => {
-        try {
-            const saved = localStorage.getItem(APPROVED_KEY);
-            return saved ? JSON.parse(saved) : [];
-        } catch {
-            return [];
-        }
-    });
-
-    // Listen for changes to approved list (when user approves/denies in Recurring tab)
-    useEffect(() => {
-        const handleApprovedChange = () => {
-            try {
-                const saved = localStorage.getItem(APPROVED_KEY);
-                setApproved(saved ? JSON.parse(saved) : []);
-            } catch {
-                // ignore
-            }
-        };
-        window.addEventListener('storage', handleApprovedChange);
-        window.addEventListener('focus', handleApprovedChange);
-        return () => {
-            window.removeEventListener('storage', handleApprovedChange);
-            window.removeEventListener('focus', handleApprovedChange);
-        };
-    }, []);
+    // Alias for compatibility
+    const approved = approvedItems;
+    // ---------------------------------
 
     // Get display info for merchant (apply global renames)
     // Returns { displayName, originalName, isRenamed }
