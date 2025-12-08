@@ -488,11 +488,24 @@ export default function Subscriptions({ transactions }) {
     });
 
     // Listen for manual recurring changes from TransactionTable
+    // Charge assignments state (for syncing)
+    const [chargeAssignments, setChargeAssignments] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem(CHARGE_ASSIGNMENTS_KEY) || '{}');
+        } catch {
+            return {};
+        }
+    });
+
+    // Listen for manual recurring changes and assignments from other windows/modals
     useEffect(() => {
         const handleStorageChange = () => {
             try {
-                const saved = localStorage.getItem(MANUAL_RECURRING_KEY);
-                setManualRecurring(saved ? JSON.parse(saved) : []);
+                const manualSaved = localStorage.getItem(MANUAL_RECURRING_KEY);
+                setManualRecurring(manualSaved ? JSON.parse(manualSaved) : []);
+
+                const assignmentsSaved = localStorage.getItem(CHARGE_ASSIGNMENTS_KEY);
+                setChargeAssignments(assignmentsSaved ? JSON.parse(assignmentsSaved) : {});
             } catch {
                 // ignore
             }
@@ -512,24 +525,31 @@ export default function Subscriptions({ transactions }) {
             localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(updated));
             return updated;
         });
-        // Also remove from approved list
+
+        // Remove from approved list
         setApproved(prev => {
             const updated = prev.filter(k => k !== merchantKey);
             localStorage.setItem(APPROVED_KEY, JSON.stringify(updated));
+            return updated;
+        });
+
+        // Clean up any charge assignments for this manual item (ORPHAN FIX)
+        setChargeAssignments(prev => {
+            const updated = { ...prev };
+            // Find all transaction IDs assigned to this merchantKey and remove them
+            Object.keys(updated).forEach(txnId => {
+                if (updated[txnId] === merchantKey) {
+                    delete updated[txnId];
+                }
+            });
+            localStorage.setItem(CHARGE_ASSIGNMENTS_KEY, JSON.stringify(updated));
             return updated;
         });
     };
 
     // Merge manual recurring items into approved items
     const allApprovedItems = useMemo(() => {
-        // Load charge assignments from localStorage
-        let chargeAssignments = {};
-        try {
-            chargeAssignments = JSON.parse(localStorage.getItem(CHARGE_ASSIGNMENTS_KEY) || '{}');
-        } catch {
-            chargeAssignments = {};
-        }
-
+        // Use reactive state instead of direct localStorage read
         // Group assignments by target subscription (merchantKey -> [transactionIds])
         const assignmentsByTarget = {};
         Object.entries(chargeAssignments).forEach(([transactionId, targetKey]) => {
@@ -636,7 +656,7 @@ export default function Subscriptions({ transactions }) {
             });
 
         return [...processedApproved, ...manualItems];
-    }, [approvedItems, manualRecurring, transactions]);
+    }, [approvedItems, manualRecurring, transactions, chargeAssignments]);
 
     const deniedItems = useMemo(() => {
         return subscriptions.filter(s => denied.includes(s.merchantKey));
