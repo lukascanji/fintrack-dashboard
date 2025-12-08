@@ -9,8 +9,8 @@ function amountsMatch(a, b) {
     return Math.abs(a - b) / Math.max(a, b) < 0.03;
 }
 
-// Minimum occurrences to qualify as recurring
-const MIN_OCCURRENCES = 4;
+// Minimum occurrences to qualify as recurring (lowered from 4 to catch more subscriptions)
+const MIN_OCCURRENCES = 2;
 const MIN_YEARLY_OCCURRENCES = 2; // Lower threshold for yearly (only 2 data points over 1-2 years)
 
 // Detect recurring transactions (subscriptions) with fuzzy matching
@@ -97,13 +97,13 @@ export function detectSubscriptions(transactions) {
 
             const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
 
-            // Determine frequency with tolerance
+            // Determine frequency with tolerance (widened tolerances to catch more edge cases)
             let frequency = null;
             if (avgInterval >= 5 && avgInterval <= 10) frequency = 'Weekly';
             else if (avgInterval >= 12 && avgInterval <= 18) frequency = 'Bi-Weekly';
-            else if (avgInterval >= 25 && avgInterval <= 38) frequency = 'Monthly';
-            else if (avgInterval >= 80 && avgInterval <= 100) frequency = 'Quarterly';
-            else if (avgInterval >= 350 && avgInterval <= 380) frequency = 'Yearly';
+            else if (avgInterval >= 20 && avgInterval <= 45) frequency = 'Monthly';  // Was 25-38
+            else if (avgInterval >= 75 && avgInterval <= 110) frequency = 'Quarterly';  // Was 80-100
+            else if (avgInterval >= 340 && avgInterval <= 400) frequency = 'Yearly';  // Was 350-380
 
             if (!frequency) return;
 
