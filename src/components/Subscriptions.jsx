@@ -10,6 +10,7 @@ function amountsMatch(a, b) {
 
 // Minimum occurrences to qualify as recurring
 const MIN_OCCURRENCES = 4;
+const MIN_YEARLY_OCCURRENCES = 2; // Lower threshold for yearly (only 2 data points over 1-2 years)
 
 // Detect recurring transactions (subscriptions) with fuzzy matching
 export function detectSubscriptions(transactions) {
@@ -52,7 +53,8 @@ export function detectSubscriptions(transactions) {
     const subscriptions = [];
 
     Object.entries(groups).forEach(([merchantKey, group]) => {
-        if (group.transactions.length < MIN_OCCURRENCES) return;
+        // Skip if less than minimum yearly threshold (we'll check per-frequency later)
+        if (group.transactions.length < MIN_YEARLY_OCCURRENCES) return;
 
         // Sort by date
         group.transactions.sort((a, b) => a.date - b.date);
@@ -79,17 +81,13 @@ export function detectSubscriptions(transactions) {
         // Process EACH cluster that meets min occurrences (umbrella merchant split)
         // e.g., Apple.com might have Apple Music ($10.99) and iCloud ($2.99)
         amountClusters.forEach(cluster => {
-            if (cluster.transactions.length < MIN_OCCURRENCES) return;
+            // Skip clusters with less than 2 transactions (minimum for any pattern)
+            if (cluster.transactions.length < MIN_YEARLY_OCCURRENCES) return;
 
             const txns = cluster.transactions;
             const clusterAmount = cluster.baseAmount;
 
-            // Create unique key: merchantKey-amount (for umbrella merchants)
-            const uniqueKey = amountClusters.length > 1
-                ? `${merchantKey}-${clusterAmount.toFixed(2)}`
-                : merchantKey;
-
-            // Calculate intervals
+            // Calculate intervals first to determine frequency
             const intervals = [];
             for (let i = 1; i < txns.length; i++) {
                 const daysDiff = (txns[i].date - txns[i - 1].date) / (1000 * 60 * 60 * 24);
@@ -107,6 +105,16 @@ export function detectSubscriptions(transactions) {
             else if (avgInterval >= 350 && avgInterval <= 380) frequency = 'Yearly';
 
             if (!frequency) return;
+
+            // Apply frequency-specific minimum occurrences
+            // Yearly only needs 2, others need 4
+            const minRequired = frequency === 'Yearly' ? MIN_YEARLY_OCCURRENCES : MIN_OCCURRENCES;
+            if (txns.length < minRequired) return;
+
+            // Create unique key: merchantKey-amount (for umbrella merchants)
+            const uniqueKey = amountClusters.length > 1
+                ? `${merchantKey}-${clusterAmount.toFixed(2)}`
+                : merchantKey;
 
             // Calculate amounts
             const amounts = txns.map(t => t.amount);
