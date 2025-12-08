@@ -538,6 +538,13 @@ export default function Subscriptions({ transactions }) {
             assignmentsByTarget[targetKey].push(transactionId);
         });
 
+        // DEBUG: Log approvedItems to see if they have allTransactions
+        console.log('approvedItems:', approvedItems.map(i => ({
+            merchantKey: i.merchantKey,
+            count: i.count,
+            allTxnCount: i.allTransactions?.length
+        })));
+
         // Process approved detected subscriptions - filter out reassigned charges
         const processedApproved = approvedItems.map(item => {
             // Only filter transactions that:

@@ -30,21 +30,38 @@ export default function SplitChargesModal({
     const subscriptionCharges = useMemo(() => {
         if (!subscription || !isOpen) return [];
 
+        // DEBUG: Log what subscription the modal receives
+        console.log('SplitChargesModal subscription:', {
+            merchantKey: subscription.merchantKey,
+            count: subscription.count,
+            allTxnCount: subscription.allTransactions?.length,
+            hasAllTransactions: !!subscription.allTransactions
+        });
+
         // Load existing assignments to filter out already-reassigned charges
         const existingAssignments = JSON.parse(localStorage.getItem(CHARGE_ASSIGNMENTS_KEY) || '{}');
 
+        // DEBUG: Log existingAssignments
+        console.log('existingAssignments from localStorage:', existingAssignments);
+        console.log('First few transaction IDs:', (subscription.allTransactions || []).slice(0, 3).map(t => t.id));
+
         // Use the transactions already attached to the subscription object
+        // Add synthetic IDs if missing (date+amount hash)
         const charges = (subscription.allTransactions || [])
+            .map((t, index) => ({
+                ...t,
+                // Generate a synthetic ID if missing based on date and amount
+                id: t.id || `${t.date?.toISOString?.() || t.date}_${t.amount || t.debit || t.credit}_${index}`,
+                // Ensure we have a proper amount
+                displayAmount: t.amount || t.debit || t.credit || 0
+            }))
             .filter(t => {
+                // Skip filter if no ID (shouldn't happen now with synthetic IDs)
+                if (!t.id) return true;
                 // Check if already assigned elsewhere
                 const isReassigned = existingAssignments[t.id] && existingAssignments[t.id] !== subscription.merchantKey;
                 return !isReassigned;
             })
-            .map(t => ({
-                ...t,
-                // Ensure we have a proper amount
-                displayAmount: t.amount || t.debit || t.credit || 0
-            }))
             .sort((a, b) => new Date(b.date) - new Date(a.date));
 
         return charges;
