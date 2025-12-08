@@ -20,30 +20,64 @@ export default function SplitChargesModal({
     // Track newly created subscriptions during this session
     const [createdSubs, setCreatedSubs] = useState([]);
 
-    // Get all charges for this subscription from transactions
+    // Get all charges for this subscription - use the transactions already attached to the subscription
     // Must be before early return to satisfy React hooks rules
     const subscriptionCharges = useMemo(() => {
-        if (!transactions || !subscription || !isOpen) return [];
+        if (!subscription || !isOpen) return [];
 
         // Load existing assignments to filter out already-reassigned charges
         const existingAssignments = JSON.parse(localStorage.getItem(CHARGE_ASSIGNMENTS_KEY) || '{}');
 
-        return transactions.filter(t => {
-            const amount = t.debit || t.credit || t.amount || 0;
-            // Match by merchantKey pattern - this is a simplified match
-            // In reality we'd want to match the exact charging pattern
-            const matchesAmount = subscription.latestAmount > 0
-                ? Math.abs(amount - subscription.latestAmount) / subscription.latestAmount < 0.03
-                : false;
-            const merchantSlice = subscription.merchant?.toUpperCase().slice(0, 8) || '';
-            const matchesMerchant = merchantSlice && t.description?.toUpperCase().includes(merchantSlice);
+        // Use the transactions already attached to the subscription object
+        const charges = (subscription.allTransactions || [])
+            .filter(t => {
+                // Check if already assigned elsewhere
+                const isReassigned = existingAssignments[t.id] && existingAssignments[t.id] !== subscription.merchantKey;
+                return !isReassigned;
+            })
+            .map(t => ({
+                ...t,
+                // Ensure we have a proper amount
+                displayAmount: t.amount || t.debit || t.credit || 0
+            }))
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-            // Check if already assigned elsewhere
-            const isReassigned = existingAssignments[t.id] && existingAssignments[t.id] !== subscription.merchantKey;
+        return charges;
+    }, [subscription, isOpen]);
 
-            return matchesAmount && matchesMerchant && !isReassigned;
-        }).sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [transactions, subscription, isOpen]);
+    // Cluster charges by day-of-month pattern to help identify different subscriptions
+    const dateClusters = useMemo(() => {
+        if (subscriptionCharges.length === 0) return [];
+
+        // Group by approximate day of month (allow ±3 days fuzziness)
+        const clusters = {};
+        subscriptionCharges.forEach(charge => {
+            const dayOfMonth = new Date(charge.date).getDate();
+            // Find or create cluster
+            let foundCluster = null;
+            for (const clusterDay of Object.keys(clusters)) {
+                if (Math.abs(dayOfMonth - parseInt(clusterDay)) <= 3) {
+                    foundCluster = clusterDay;
+                    break;
+                }
+            }
+            if (foundCluster) {
+                clusters[foundCluster].push(charge);
+            } else {
+                clusters[dayOfMonth] = [charge];
+            }
+        });
+
+        // Convert to array and sort by day
+        return Object.entries(clusters)
+            .map(([day, charges]) => ({
+                dayOfMonth: parseInt(day),
+                charges,
+                count: charges.length,
+                label: `~${day}${['st', 'nd', 'rd'][parseInt(day) - 1] || 'th'} of month`
+            }))
+            .sort((a, b) => a.dayOfMonth - b.dayOfMonth);
+    }, [subscriptionCharges]);
 
     // Get other subscriptions for dropdown (exclude current)
     const otherSubscriptions = useMemo(() => {
@@ -162,9 +196,39 @@ export default function SplitChargesModal({
                     fontSize: '0.85rem',
                     marginBottom: '16px'
                 }}>
-                    Assign charges to different subscriptions. Use this when the same price point
-                    contains multiple different subscriptions.
+                    {dateClusters.length > 1 ? (
+                        <>
+                            <strong style={{ color: 'var(--accent-warning)' }}>
+                                Found {dateClusters.length} billing patterns!
+                            </strong>{' '}
+                            Charges grouped by day-of-month. Assign each pattern to a different subscription.
+                        </>
+                    ) : (
+                        'Assign charges to different subscriptions. Use this when the same price point contains multiple different subscriptions.'
+                    )}
                 </p>
+
+                {/* Date Cluster Summary */}
+                {dateClusters.length > 1 && (
+                    <div style={{
+                        display: 'flex',
+                        gap: '8px',
+                        marginBottom: '16px',
+                        flexWrap: 'wrap'
+                    }}>
+                        {dateClusters.map((cluster, i) => (
+                            <div key={cluster.dayOfMonth} style={{
+                                padding: '6px 12px',
+                                background: `rgba(${i === 0 ? '99, 102, 241' : '249, 115, 22'}, 0.2)`,
+                                borderRadius: '16px',
+                                fontSize: '0.75rem',
+                                color: i === 0 ? 'var(--accent-primary)' : 'var(--accent-warning)'
+                            }}>
+                                Pattern {i + 1}: {cluster.label} ({cluster.count} charges)
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {/* Charges List */}
                 <div style={{
@@ -175,6 +239,10 @@ export default function SplitChargesModal({
                     {subscriptionCharges.length === 0 ? (
                         <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
                             No charges found for this subscription.
+                            <br />
+                            <span style={{ fontSize: '0.75rem' }}>
+                                (Subscription may not have transaction data attached)
+                            </span>
                         </p>
                     ) : (
                         subscriptionCharges.map(charge => {
