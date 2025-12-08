@@ -20,6 +20,8 @@ export default function SplitChargesModal({
     // For bulk cluster new subscription input
     const [clusterNewInput, setClusterNewInput] = useState(null); // cluster index or null
     const [clusterNewName, setClusterNewName] = useState('');
+    // Track which subscription was assigned to each cluster pattern
+    const [clusterAssignments, setClusterAssignments] = useState({}); // { clusterIndex: merchantKey }
     // Track newly created subscriptions during this session
     const [createdSubs, setCreatedSubs] = useState([]);
 
@@ -113,6 +115,12 @@ export default function SplitChargesModal({
             ...prev,
             ...newAssignments
         }));
+
+        // Track which subscription was assigned to this cluster
+        setClusterAssignments(prev => ({
+            ...prev,
+            [clusterIndex]: targetKey
+        }));
     };
 
     // Create new subscription and assign all cluster charges to it
@@ -142,6 +150,12 @@ export default function SplitChargesModal({
         setAssignments(prev => ({
             ...prev,
             ...newAssignments
+        }));
+
+        // Track which subscription was assigned to this cluster
+        setClusterAssignments(prev => ({
+            ...prev,
+            [clusterIndex]: newKey
         }));
 
         // Notify parent
@@ -281,6 +295,13 @@ export default function SplitChargesModal({
                             const assignedCount = cluster.charges.filter(c => assignments[c.id]).length;
                             const isFullyAssigned = assignedCount === cluster.charges.length;
 
+                            // Get the assigned subscription for this cluster
+                            const clusterAssignedKey = clusterAssignments[i];
+                            const clusterAssignedSub = clusterAssignedKey
+                                ? [...otherSubscriptions, subscription].find(s => s.merchantKey === clusterAssignedKey)
+                                || createdSubs.find(s => s.merchantKey === clusterAssignedKey)
+                                : null;
+
                             return (
                                 <div key={cluster.dayOfMonth} style={{
                                     display: 'flex',
@@ -377,6 +398,47 @@ export default function SplitChargesModal({
                                                 <X size={14} />
                                             </button>
                                         </div>
+                                    ) : clusterAssignedSub ? (
+                                        // Show assigned subscription with change option
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{
+                                                padding: '6px 12px',
+                                                background: 'rgba(34, 197, 94, 0.2)',
+                                                borderRadius: '6px',
+                                                color: 'var(--accent-success)',
+                                                fontSize: '0.8rem',
+                                                fontWeight: 500
+                                            }}>
+                                                → {clusterAssignedSub.displayName || clusterAssignedSub.merchant}
+                                            </span>
+                                            <button
+                                                onClick={() => {
+                                                    // Clear assignments for this cluster
+                                                    const clusterChargeIds = cluster.charges.map(c => c.id);
+                                                    setAssignments(prev => {
+                                                        const updated = { ...prev };
+                                                        clusterChargeIds.forEach(id => delete updated[id]);
+                                                        return updated;
+                                                    });
+                                                    setClusterAssignments(prev => {
+                                                        const updated = { ...prev };
+                                                        delete updated[i];
+                                                        return updated;
+                                                    });
+                                                }}
+                                                style={{
+                                                    padding: '4px 8px',
+                                                    background: 'rgba(255, 255, 255, 0.1)',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    color: 'var(--text-secondary)',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.7rem'
+                                                }}
+                                            >
+                                                Change
+                                            </button>
+                                        </div>
                                     ) : (
                                         <select
                                             value=""
@@ -421,135 +483,173 @@ export default function SplitChargesModal({
                     </div>
                 )}
 
-                {/* Charges List */}
-                <div style={{
-                    flex: 1,
-                    overflowY: 'auto',
-                    marginBottom: '16px'
-                }}>
-                    {subscriptionCharges.length === 0 ? (
-                        <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
-                            No charges found for this subscription.
-                            <br />
-                            <span style={{ fontSize: '0.75rem' }}>
-                                (Subscription may not have transaction data attached)
-                            </span>
-                        </p>
-                    ) : (
-                        subscriptionCharges.map(charge => {
-                            const amount = charge.debit || charge.credit || charge.amount || 0;
-                            const dateStr = new Date(charge.date).toLocaleDateString();
-                            const currentAssignment = assignments[charge.id];
-                            const isShowingNewInput = showNewSubInput === charge.id;
+                {/* Charges List - Only show unassigned or individually-assigned charges */}
+                {(() => {
+                    // Get all charge IDs that were bulk-assigned via cluster
+                    const clusterAssignedChargeIds = new Set();
+                    Object.keys(clusterAssignments).forEach(clusterIdx => {
+                        const cluster = dateClusters[parseInt(clusterIdx)];
+                        if (cluster) {
+                            cluster.charges.forEach(c => clusterAssignedChargeIds.add(c.id));
+                        }
+                    });
 
-                            return (
-                                <div key={charge.id} style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '12px',
-                                    padding: '10px 12px',
-                                    background: currentAssignment ? 'rgba(249, 115, 22, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                                    borderRadius: '8px',
-                                    marginBottom: '8px',
-                                    border: currentAssignment ? '1px solid rgba(249, 115, 22, 0.3)' : '1px solid transparent'
+                    // Filter to only show charges NOT assigned via cluster
+                    const unassignedCharges = subscriptionCharges.filter(c => !clusterAssignedChargeIds.has(c.id));
+                    const clusterAssignedCount = clusterAssignedChargeIds.size;
+
+                    return (
+                        <div style={{
+                            flex: 1,
+                            overflowY: 'auto',
+                            marginBottom: '16px'
+                        }}>
+                            {clusterAssignedCount > 0 && unassignedCharges.length > 0 && (
+                                <div style={{
+                                    padding: '8px 12px',
+                                    background: 'rgba(34, 197, 94, 0.1)',
+                                    borderRadius: '6px',
+                                    marginBottom: '12px',
+                                    fontSize: '0.8rem',
+                                    color: 'var(--text-secondary)'
                                 }}>
-                                    {/* Date & Amount */}
-                                    <div style={{ minWidth: '140px' }}>
-                                        <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                                            {dateStr}
-                                        </div>
-                                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                                            ${amount.toFixed(2)}
-                                        </div>
-                                    </div>
-
-                                    <ArrowRight size={16} style={{ color: 'var(--text-secondary)' }} />
-
-                                    {/* Assignment Dropdown or New Input */}
-                                    <div style={{ flex: 1 }}>
-                                        {isShowingNewInput ? (
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                <input
-                                                    type="text"
-                                                    value={newSubName}
-                                                    onChange={(e) => setNewSubName(e.target.value)}
-                                                    placeholder="New subscription name..."
-                                                    autoFocus
-                                                    style={{
-                                                        flex: 1,
-                                                        padding: '8px 12px',
-                                                        background: 'var(--bg-primary)',
-                                                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                                                        borderRadius: '6px',
-                                                        color: 'var(--text-primary)',
-                                                        fontSize: '0.9rem'
-                                                    }}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') handleCreateNew(charge.id);
-                                                        if (e.key === 'Escape') setShowNewSubInput(null);
-                                                    }}
-                                                />
-                                                <button
-                                                    onClick={() => handleCreateNew(charge.id)}
-                                                    style={{
-                                                        padding: '8px 12px',
-                                                        background: 'var(--accent-success)',
-                                                        border: 'none',
-                                                        borderRadius: '6px',
-                                                        color: 'white',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    <Check size={16} />
-                                                </button>
-                                                <button
-                                                    onClick={() => setShowNewSubInput(null)}
-                                                    style={{
-                                                        padding: '8px 12px',
-                                                        background: 'rgba(255, 255, 255, 0.1)',
-                                                        border: 'none',
-                                                        borderRadius: '6px',
-                                                        color: 'var(--text-secondary)',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    <X size={16} />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <select
-                                                value={currentAssignment || subscription.merchantKey}
-                                                onChange={(e) => handleAssignmentChange(charge.id, e.target.value)}
-                                                style={{
-                                                    width: '100%',
-                                                    padding: '8px 12px',
-                                                    background: 'var(--bg-primary)',
-                                                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                                                    borderRadius: '6px',
-                                                    color: 'var(--text-primary)',
-                                                    fontSize: '0.9rem',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                <option value={subscription.merchantKey}>
-                                                    Keep with {subscription.displayName || subscription.merchant}
-                                                </option>
-                                                <optgroup label="Move to existing">
-                                                    {otherSubscriptions.map(s => (
-                                                        <option key={s.merchantKey} value={s.merchantKey}>
-                                                            {s.displayName || s.merchant}
-                                                        </option>
-                                                    ))}
-                                                </optgroup>
-                                                <option value="__NEW__">+ Create New Subscription</option>
-                                            </select>
-                                        )}
-                                    </div>
+                                    ✓ {clusterAssignedCount} charges assigned via pattern selection above
                                 </div>
-                            );
-                        })
-                    )}
-                </div>
+                            )}
+
+                            {unassignedCharges.length === 0 && clusterAssignedCount > 0 ? (
+                                <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '20px' }}>
+                                    All {clusterAssignedCount} charges have been assigned via pattern selection.
+                                    <br />
+                                    <span style={{ fontSize: '0.75rem' }}>
+                                        Click "Change" above to modify assignments.
+                                    </span>
+                                </p>
+                            ) : unassignedCharges.length === 0 ? (
+                                <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
+                                    No charges found for this subscription.
+                                    <br />
+                                    <span style={{ fontSize: '0.75rem' }}>
+                                        (Subscription may not have transaction data attached)
+                                    </span>
+                                </p>
+                            ) : (
+                                unassignedCharges.map(charge => {
+                                    const amount = charge.debit || charge.credit || charge.amount || 0;
+                                    const dateStr = new Date(charge.date).toLocaleDateString();
+                                    const currentAssignment = assignments[charge.id];
+                                    const isShowingNewInput = showNewSubInput === charge.id;
+
+                                    return (
+                                        <div key={charge.id} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '12px',
+                                            padding: '10px 12px',
+                                            background: currentAssignment ? 'rgba(249, 115, 22, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                                            borderRadius: '8px',
+                                            marginBottom: '8px',
+                                            border: currentAssignment ? '1px solid rgba(249, 115, 22, 0.3)' : '1px solid transparent'
+                                        }}>
+                                            {/* Date & Amount */}
+                                            <div style={{ minWidth: '140px' }}>
+                                                <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                                                    {dateStr}
+                                                </div>
+                                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                                    ${amount.toFixed(2)}
+                                                </div>
+                                            </div>
+
+                                            <ArrowRight size={16} style={{ color: 'var(--text-secondary)' }} />
+
+                                            {/* Assignment Dropdown or New Input */}
+                                            <div style={{ flex: 1 }}>
+                                                {isShowingNewInput ? (
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <input
+                                                            type="text"
+                                                            value={newSubName}
+                                                            onChange={(e) => setNewSubName(e.target.value)}
+                                                            placeholder="New subscription name..."
+                                                            autoFocus
+                                                            style={{
+                                                                flex: 1,
+                                                                padding: '8px 12px',
+                                                                background: 'var(--bg-primary)',
+                                                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                                borderRadius: '6px',
+                                                                color: 'var(--text-primary)',
+                                                                fontSize: '0.9rem'
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleCreateNew(charge.id);
+                                                                if (e.key === 'Escape') setShowNewSubInput(null);
+                                                            }}
+                                                        />
+                                                        <button
+                                                            onClick={() => handleCreateNew(charge.id)}
+                                                            style={{
+                                                                padding: '8px 12px',
+                                                                background: 'var(--accent-success)',
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                color: 'white',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            <Check size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setShowNewSubInput(null)}
+                                                            style={{
+                                                                padding: '8px 12px',
+                                                                background: 'rgba(255, 255, 255, 0.1)',
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                color: 'var(--text-secondary)',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <select
+                                                        value={currentAssignment || subscription.merchantKey}
+                                                        onChange={(e) => handleAssignmentChange(charge.id, e.target.value)}
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '8px 12px',
+                                                            background: 'var(--bg-primary)',
+                                                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                            borderRadius: '6px',
+                                                            color: 'var(--text-primary)',
+                                                            fontSize: '0.9rem',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <option value={subscription.merchantKey}>
+                                                            Keep with {subscription.displayName || subscription.merchant}
+                                                        </option>
+                                                        <optgroup label="Move to existing">
+                                                            {otherSubscriptions.map(s => (
+                                                                <option key={s.merchantKey} value={s.merchantKey}>
+                                                                    {s.displayName || s.merchant}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                        <option value="__NEW__">+ Create New Subscription</option>
+                                                    </select>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {/* Footer */}
                 <div style={{
