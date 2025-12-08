@@ -2,10 +2,11 @@ import { useMemo } from 'react';
 import { RefreshCw, Calendar, TrendingUp, TrendingDown } from 'lucide-react';
 import { getMerchantKey } from '../utils/categorize';
 
-// Fuzzy amount matching: returns true if amounts are within 15% of each other
+// Fuzzy amount matching: returns true if amounts are within 3% of each other
+// (handles minor tax variations without grouping truly different subscriptions)
 function amountsMatch(a, b) {
     if (a === 0 || b === 0) return a === b;
-    return Math.abs(a - b) / Math.max(a, b) < 0.15;
+    return Math.abs(a - b) / Math.max(a, b) < 0.03;
 }
 
 // Minimum occurrences to qualify as recurring
