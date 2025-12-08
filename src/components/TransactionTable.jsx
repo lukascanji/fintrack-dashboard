@@ -461,9 +461,9 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                             <tr key={t.id} className={exitingIds.has(t.id) ? 'exiting' : ''}>
                                 <td>{t.date.toLocaleDateString()}</td>
                                 <td style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {t.description}
+                                    {getDisplayMerchant(t)}
                                 </td>
-                                <td>{getDisplayMerchant(t)}</td>
+                                <td>{t.merchant}</td>
                                 <td style={{ position: 'relative' }}>
                                     <span
                                         className={`category-badge ${t.category === 'GAMBLING' ? 'gambling' : ''} ${t.category === 'FEES' ? 'fees' : ''}`}
