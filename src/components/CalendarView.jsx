@@ -87,17 +87,49 @@ export default function CalendarView({ transactions }) {
         };
     }, []);
 
-    // Get display name for merchant (apply global renames)
-    const getDisplayMerchant = (t) => {
-        const merchantKey = getMerchantKey(t.merchant);
-        const amountKey = `${merchantKey}-${Math.abs(t.amount || t.debit || t.credit || 0).toFixed(2)}`;
+    // Get display info for merchant (apply global renames)
+    // Returns { displayName, originalName, isRenamed }
+    const getDisplayMerchantInfo = (t) => {
+        // Use description for key (same as detectSubscriptions in Subscriptions.jsx)
+        const merchantKey = getMerchantKey(t.description);
+        const txnAmount = Math.abs(t.amount || t.debit || t.credit || 0).toFixed(2);
+        const amountKey = `${merchantKey}-${txnAmount}`;
+
         if (globalRenames[amountKey]?.displayName) {
-            return globalRenames[amountKey].displayName;
+            return {
+                displayName: globalRenames[amountKey].displayName,
+                originalName: t.description,
+                isRenamed: true
+            };
         }
         if (globalRenames[merchantKey]?.displayName) {
-            return globalRenames[merchantKey].displayName;
+            return {
+                displayName: globalRenames[merchantKey].displayName,
+                originalName: t.description,
+                isRenamed: true
+            };
         }
-        return t.merchant;
+
+        // Fallback search by originalMerchant + amount
+        for (const [key, rename] of Object.entries(globalRenames)) {
+            if (rename.originalMerchant && rename.amount) {
+                const renameOrigKey = getMerchantKey(rename.originalMerchant);
+                const renameAmount = rename.amount.toFixed(2);
+                if (renameOrigKey === merchantKey && renameAmount === txnAmount) {
+                    return {
+                        displayName: rename.displayName,
+                        originalName: t.description,
+                        isRenamed: true
+                    };
+                }
+            }
+        }
+
+        return {
+            displayName: t.merchant,
+            originalName: t.description,
+            isRenamed: false
+        };
     };
 
     // Detect subscriptions for future projections
@@ -303,7 +335,7 @@ export default function CalendarView({ transactions }) {
                                                     borderRadius: '50%',
                                                     background: t.credit > 0 ? 'var(--accent-success)' : getCategoryColor(t.category)
                                                 }}
-                                                title={`${getDisplayMerchant(t)}: ${t.debit > 0 ? '-$' + t.debit.toFixed(2) : '+$' + t.credit.toFixed(2)}`}
+                                                title={`${getDisplayMerchantInfo(t).displayName}: ${t.debit > 0 ? '-$' + t.debit.toFixed(2) : '+$' + t.credit.toFixed(2)}`}
                                             />
                                         ))}
                                         {cell.transactions.length > 5 && (
@@ -403,7 +435,7 @@ export default function CalendarView({ transactions }) {
                                     >
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>{getDisplayMerchant(t)}</span>
+                                                <span style={{ fontSize: '0.875rem', fontWeight: '500' }} title={getDisplayMerchantInfo(t).isRenamed ? `Original: ${getDisplayMerchantInfo(t).originalName}` : undefined}>{getDisplayMerchantInfo(t).displayName}</span>
                                                 {personNames[t.id] && (
                                                     <span style={{
                                                         display: 'inline-flex',

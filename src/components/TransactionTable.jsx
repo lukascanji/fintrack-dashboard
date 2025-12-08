@@ -110,21 +110,30 @@ export default function TransactionTable({ transactions, showToast, onRecategori
         };
     }, []);
 
-    // Get display name for merchant (apply global renames)
-    const getDisplayMerchant = (txn) => {
-        // Try to find a matching rename by checking all possible keys
-        const merchantKey = getMerchantKey(txn.merchant);
+    // Get display info for merchant (apply global renames)
+    // Returns { displayName, originalName, isRenamed }
+    const getDisplayMerchantInfo = (txn) => {
+        // Use description for key (same as detectSubscriptions in Subscriptions.jsx)
+        const merchantKey = getMerchantKey(txn.description);
         const txnAmount = Math.abs(txn.amount).toFixed(2);
 
         // Check for exact merchantKey match with amount
         const amountKey = `${merchantKey}-${txnAmount}`;
         if (globalRenames[amountKey]?.displayName) {
-            return globalRenames[amountKey].displayName;
+            return {
+                displayName: globalRenames[amountKey].displayName,
+                originalName: txn.description,
+                isRenamed: true
+            };
         }
 
         // Check for merchantKey match without amount
         if (globalRenames[merchantKey]?.displayName) {
-            return globalRenames[merchantKey].displayName;
+            return {
+                displayName: globalRenames[merchantKey].displayName,
+                originalName: txn.description,
+                isRenamed: true
+            };
         }
 
         // Iterate over all renames to find match by originalMerchant + amount
@@ -133,13 +142,21 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                 const renameOrigKey = getMerchantKey(rename.originalMerchant);
                 const renameAmount = rename.amount.toFixed(2);
                 if (renameOrigKey === merchantKey && renameAmount === txnAmount) {
-                    return rename.displayName;
+                    return {
+                        displayName: rename.displayName,
+                        originalName: txn.description,
+                        isRenamed: true
+                    };
                 }
             }
         }
 
-        // Fall back to original merchant
-        return txn.merchant;
+        // No rename found
+        return {
+            displayName: txn.description,
+            originalName: txn.description,
+            isRenamed: false
+        };
     };
 
     // Load recent people usage for ordering
@@ -461,7 +478,20 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                             <tr key={t.id} className={exitingIds.has(t.id) ? 'exiting' : ''}>
                                 <td>{t.date.toLocaleDateString()}</td>
                                 <td style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {getDisplayMerchant(t)}
+                                    {(() => {
+                                        const info = getDisplayMerchantInfo(t);
+                                        return (
+                                            <span
+                                                title={info.isRenamed ? `Original: ${info.originalName}` : undefined}
+                                                style={info.isRenamed ? {
+                                                    color: 'var(--accent-primary)',
+                                                    fontWeight: '500'
+                                                } : undefined}
+                                            >
+                                                {info.displayName}
+                                            </span>
+                                        );
+                                    })()}
                                 </td>
                                 <td>{t.merchant}</td>
                                 <td style={{ position: 'relative' }}>
