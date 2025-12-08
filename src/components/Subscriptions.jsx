@@ -168,11 +168,14 @@ export function detectSubscriptions(transactions) {
 }
 
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users, Scissors, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users, Scissors, Pencil, Trash2, GitMerge } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
+import SplitChargesModal from './SplitChargesModal';
 
 const EMAIL_STORAGE_KEY = 'fintrack_subscription_emails';
 const SHARED_STORAGE_KEY = 'fintrack_shared_subscriptions';
+const CHARGE_ASSIGNMENTS_KEY = 'fintrack_charge_assignments';
+const MERGED_SUBSCRIPTIONS_KEY = 'fintrack_merged_subscriptions';
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const APPROVED_KEY = 'fintrack_recurring_approved';
 const DENIED_KEY = 'fintrack_recurring_denied';
@@ -196,6 +199,25 @@ export default function Subscriptions({ transactions }) {
     const [splitModalOpen, setSplitModalOpen] = useState(false);
     const [merchantToSplit, setMerchantToSplit] = useState(null);
     const [newEmailInput, setNewEmailInput] = useState('');
+
+    // Split Charges Modal state
+    const [splitChargesModalOpen, setSplitChargesModalOpen] = useState(false);
+    const [subscriptionToSplit, setSubscriptionToSplit] = useState(null);
+
+    // Merge subscriptions state
+    const [mergeSelected, setMergeSelected] = useState([]); // array of merchantKeys
+    const [showMergePrompt, setShowMergePrompt] = useState(false);
+    const [mergedName, setMergedName] = useState('');
+
+    // Merged subscriptions from localStorage
+    const [mergedSubscriptions, setMergedSubscriptions] = useState(() => {
+        try {
+            const saved = localStorage.getItem(MERGED_SUBSCRIPTIONS_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch {
+            return {};
+        }
+    });
 
     // Load saved emails from localStorage (merchant -> email mapping)
     const [emails, setEmails] = useState(() => {
@@ -265,6 +287,85 @@ export default function Subscriptions({ transactions }) {
             delete updated[merchantKey];
             return updated;
         });
+    };
+
+    // Open split charges modal
+    const openSplitCharges = (sub) => {
+        setSubscriptionToSplit(sub);
+        setSplitChargesModalOpen(true);
+    };
+
+    // Handle creating new subscription from split modal
+    const handleCreateNewFromSplit = (newSub) => {
+        // Add to approved list
+        setApproved(prev => {
+            if (!prev.includes(newSub.merchantKey)) {
+                const updated = [...prev, newSub.merchantKey];
+                localStorage.setItem(APPROVED_KEY, JSON.stringify(updated));
+                return updated;
+            }
+            return prev;
+        });
+
+        // Add to manual recurring
+        const manual = JSON.parse(localStorage.getItem(MANUAL_RECURRING_KEY) || '[]');
+        if (!manual.some(m => m.merchantKey === newSub.merchantKey)) {
+            manual.push({
+                merchantKey: newSub.merchantKey,
+                merchant: newSub.merchant,
+                displayName: newSub.displayName,
+                amount: 0, // Will be determined by assigned charges
+                category: 'OTHER',
+                dateAdded: new Date().toISOString(),
+                isManuallyCreated: true
+            });
+            localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(manual));
+        }
+    };
+
+    // Toggle subscription for merge selection
+    const toggleMergeSelect = (merchantKey) => {
+        setMergeSelected(prev => {
+            if (prev.includes(merchantKey)) {
+                return prev.filter(k => k !== merchantKey);
+            }
+            return [...prev, merchantKey];
+        });
+    };
+
+    // Execute merge
+    const executeMerge = () => {
+        if (mergeSelected.length < 2 || !mergedName.trim()) return;
+
+        const newKey = `merged_${mergedName.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
+
+        // Get the subscriptions being merged
+        const toMerge = allApprovedItems.filter(s => mergeSelected.includes(s.merchantKey));
+
+        // Build price history from merged subscriptions
+        const priceHistory = toMerge.map(s => ({
+            amount: s.latestAmount,
+            merchantKey: s.merchantKey,
+            originalMerchant: s.merchant
+        }));
+
+        // Save merged subscription
+        const merged = {
+            ...mergedSubscriptions,
+            [newKey]: {
+                displayName: mergedName.trim(),
+                mergedFrom: mergeSelected,
+                priceHistory: priceHistory,
+                createdAt: new Date().toISOString()
+            }
+        };
+        setMergedSubscriptions(merged);
+        localStorage.setItem(MERGED_SUBSCRIPTIONS_KEY, JSON.stringify(merged));
+
+        // Reset state
+        setMergeSelected([]);
+        setShowMergePrompt(false);
+        setMergedName('');
     };
 
     // Approval workflow state
@@ -635,6 +736,44 @@ export default function Subscriptions({ transactions }) {
                                     ~${monthlyTotal.toFixed(0)}/mo
                                 </div>
                             )}
+                            {/* Merge button when items selected */}
+                            {mergeSelected.length >= 2 && (
+                                <button
+                                    onClick={() => setShowMergePrompt(true)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '6px 12px',
+                                        background: 'rgba(99, 102, 241, 0.2)',
+                                        border: 'none',
+                                        borderRadius: '20px',
+                                        color: 'var(--accent-primary)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '600'
+                                    }}
+                                >
+                                    <GitMerge size={14} />
+                                    Merge {mergeSelected.length} Selected
+                                </button>
+                            )}
+                            {mergeSelected.length > 0 && (
+                                <button
+                                    onClick={() => setMergeSelected([])}
+                                    style={{
+                                        padding: '6px 12px',
+                                        background: 'rgba(255, 255, 255, 0.1)',
+                                        border: 'none',
+                                        borderRadius: '20px',
+                                        color: 'var(--text-secondary)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem'
+                                    }}
+                                >
+                                    Clear Selection
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -688,6 +827,23 @@ export default function Subscriptions({ transactions }) {
                                                     }}
                                                 >
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        {/* Merge selection checkbox */}
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={mergeSelected.includes(sub.merchantKey)}
+                                                            onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                toggleMergeSelect(sub.merchantKey);
+                                                            }}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            style={{
+                                                                width: '16px',
+                                                                height: '16px',
+                                                                cursor: 'pointer',
+                                                                accentColor: 'var(--accent-primary)'
+                                                            }}
+                                                            title="Select for merge"
+                                                        />
                                                         <div style={{
                                                             padding: '8px',
                                                             background: 'rgba(99, 102, 241, 0.2)',
@@ -841,9 +997,9 @@ export default function Subscriptions({ transactions }) {
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        openSplitModal(sub);
+                                                                        openSplitCharges(sub);
                                                                     }}
-                                                                    title="Split bundled transaction"
+                                                                    title="Split/Reassign Charges"
                                                                     style={{
                                                                         display: 'inline-flex',
                                                                         alignItems: 'center',
@@ -1462,6 +1618,111 @@ export default function Subscriptions({ transactions }) {
                     existingSplits={merchantSplits[merchantToSplit.merchantKey]}
                     onSave={(splitData) => saveMerchantSplit(merchantToSplit.merchantKey, splitData)}
                 />
+            )}
+
+            {/* Split Charges Modal - for reassigning charges to different subscriptions */}
+            <SplitChargesModal
+                isOpen={splitChargesModalOpen}
+                onClose={() => {
+                    setSplitChargesModalOpen(false);
+                    setSubscriptionToSplit(null);
+                }}
+                subscription={subscriptionToSplit}
+                allSubscriptions={allApprovedItems}
+                transactions={transactions}
+                onCreateNewSubscription={handleCreateNewFromSplit}
+                onSave={() => {
+                    // Force refresh
+                    window.dispatchEvent(new Event('storage'));
+                }}
+            />
+
+            {/* Merge Prompt Modal */}
+            {showMergePrompt && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        background: 'var(--bg-secondary)',
+                        borderRadius: '12px',
+                        padding: '24px',
+                        maxWidth: '400px',
+                        width: '90%'
+                    }}>
+                        <h3 style={{ margin: '0 0 16px', color: 'var(--text-primary)' }}>
+                            Merge {mergeSelected.length} Subscriptions
+                        </h3>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '16px' }}>
+                            Combine subscriptions with different prices into one (for price changes).
+                        </p>
+                        <input
+                            type="text"
+                            value={mergedName}
+                            onChange={(e) => setMergedName(e.target.value)}
+                            placeholder="Enter merged subscription name..."
+                            autoFocus
+                            style={{
+                                width: '100%',
+                                padding: '12px',
+                                background: 'var(--bg-primary)',
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                borderRadius: '8px',
+                                color: 'var(--text-primary)',
+                                fontSize: '1rem',
+                                marginBottom: '16px'
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') executeMerge();
+                                if (e.key === 'Escape') {
+                                    setShowMergePrompt(false);
+                                    setMergedName('');
+                                }
+                            }}
+                        />
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => {
+                                    setShowMergePrompt(false);
+                                    setMergedName('');
+                                }}
+                                style={{
+                                    padding: '10px 20px',
+                                    background: 'rgba(255, 255, 255, 0.1)',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    color: 'var(--text-primary)',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={executeMerge}
+                                disabled={!mergedName.trim()}
+                                style={{
+                                    padding: '10px 20px',
+                                    background: mergedName.trim() ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.1)',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    color: mergedName.trim() ? 'white' : 'var(--text-secondary)',
+                                    cursor: mergedName.trim() ? 'pointer' : 'not-allowed',
+                                    fontWeight: 500
+                                }}
+                            >
+                                Merge
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
