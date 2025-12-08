@@ -258,6 +258,15 @@ export default function Subscriptions({ transactions }) {
         setRenameInput('');
     };
 
+    // Handler to revert to original name (remove rename)
+    const revertRename = (merchantKey) => {
+        setGlobalRenames(prev => {
+            const updated = { ...prev };
+            delete updated[merchantKey];
+            return updated;
+        });
+    };
+
     // Approval workflow state
     const [approved, setApproved] = useState(() => {
         try {
@@ -735,6 +744,29 @@ export default function Subscriptions({ transactions }) {
                                                                         >
                                                                             <Pencil size={10} />
                                                                         </button>
+                                                                        {/* Revert button - only show when renamed */}
+                                                                        {globalRenames[sub.merchantKey] && (
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    revertRename(sub.merchantKey);
+                                                                                }}
+                                                                                title="Revert to original name"
+                                                                                style={{
+                                                                                    display: 'inline-flex',
+                                                                                    alignItems: 'center',
+                                                                                    padding: '2px 4px',
+                                                                                    background: 'rgba(239, 68, 68, 0.2)',
+                                                                                    border: 'none',
+                                                                                    borderRadius: '4px',
+                                                                                    color: 'var(--accent-danger)',
+                                                                                    cursor: 'pointer',
+                                                                                    fontSize: '0.6rem'
+                                                                                }}
+                                                                            >
+                                                                                <X size={10} />
+                                                                            </button>
+                                                                        )}
                                                                     </>
                                                                 )}
                                                                 {/* Category badge */}

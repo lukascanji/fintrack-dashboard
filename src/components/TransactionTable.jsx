@@ -115,7 +115,8 @@ export default function TransactionTable({ transactions, showToast, onRecategori
     const getDisplayMerchantInfo = (txn) => {
         // Use description for key (same as detectSubscriptions in Subscriptions.jsx)
         const merchantKey = getMerchantKey(txn.description);
-        const txnAmount = Math.abs(txn.amount).toFixed(2);
+        // detectSubscriptions uses t.debit for amount, so we need to match that
+        const txnAmount = (txn.debit || txn.credit || txn.amount || 0).toFixed(2);
 
         // Check for exact merchantKey match with amount
         const amountKey = `${merchantKey}-${txnAmount}`;
