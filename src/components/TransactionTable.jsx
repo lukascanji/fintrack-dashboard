@@ -8,6 +8,7 @@ const PEOPLE_LIST_KEY = 'fintrack_people_list';
 const RECENT_PEOPLE_KEY = 'fintrack_recent_people';
 const GLOBAL_RENAMES_KEY = 'fintrack_global_renames';
 const MANUAL_RECURRING_KEY = 'fintrack_manual_recurring';
+const APPROVED_KEY = 'fintrack_recurring_approved';
 
 const ALL_CATEGORIES = [
     'DINING', 'GROCERIES', 'SHOPPING', 'TRANSPORTATION', 'ENTERTAINMENT',
@@ -109,6 +110,40 @@ export default function TransactionTable({ transactions, showToast, onRecategori
             document.removeEventListener('visibilitychange', handleStorageChange);
         };
     }, []);
+
+    // Load approved recurring list from localStorage
+    const [approvedRecurring, setApprovedRecurring] = useState(() => {
+        try {
+            const saved = localStorage.getItem(APPROVED_KEY);
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    // Listen for approved list changes from Recurring tab
+    useEffect(() => {
+        const handleApprovedChange = () => {
+            try {
+                const saved = localStorage.getItem(APPROVED_KEY);
+                setApprovedRecurring(saved ? JSON.parse(saved) : []);
+            } catch {
+                // ignore
+            }
+        };
+        window.addEventListener('storage', handleApprovedChange);
+        window.addEventListener('focus', handleApprovedChange);
+        return () => {
+            window.removeEventListener('storage', handleApprovedChange);
+            window.removeEventListener('focus', handleApprovedChange);
+        };
+    }, []);
+
+    // Check if a transaction is part of an approved recurring item
+    const isRecurring = (txn) => {
+        const merchantKey = getMerchantKey(txn.description);
+        return approvedRecurring.includes(merchantKey);
+    };
 
     // Get display info for merchant (apply global renames)
     // Returns { displayName, originalName, isRenamed }
@@ -751,22 +786,28 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                                 </td>
                                 <td style={{ padding: '4px' }}>
                                     <button
-                                        onClick={() => addToRecurring(t)}
-                                        title="Add to Recurring"
+                                        onClick={() => !isRecurring(t) && addToRecurring(t)}
+                                        title={isRecurring(t) ? "Already in Recurring" : "Add to Recurring"}
                                         style={{
                                             padding: '4px 6px',
-                                            background: 'rgba(99, 102, 241, 0.2)',
+                                            background: isRecurring(t)
+                                                ? 'rgba(34, 197, 94, 0.3)'
+                                                : 'rgba(99, 102, 241, 0.2)',
                                             border: 'none',
                                             borderRadius: '4px',
-                                            color: 'var(--accent-primary)',
-                                            cursor: 'pointer',
+                                            color: isRecurring(t)
+                                                ? 'var(--accent-success)'
+                                                : 'var(--accent-primary)',
+                                            cursor: isRecurring(t) ? 'default' : 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '2px',
-                                            fontSize: '0.65rem'
+                                            fontSize: '0.65rem',
+                                            opacity: isRecurring(t) ? 1 : 0.7
                                         }}
                                     >
                                         <RefreshCw size={10} />
+                                        {isRecurring(t) && <Check size={8} />}
                                     </button>
                                 </td>
                             </tr>
