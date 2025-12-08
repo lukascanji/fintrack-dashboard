@@ -521,22 +521,108 @@ export default function Subscriptions({ transactions }) {
 
     // Merge manual recurring items into approved items
     const allApprovedItems = useMemo(() => {
+        // Load charge assignments from localStorage
+        let chargeAssignments = {};
+        try {
+            chargeAssignments = JSON.parse(localStorage.getItem(CHARGE_ASSIGNMENTS_KEY) || '{}');
+        } catch {
+            chargeAssignments = {};
+        }
+
+        // Group assignments by target subscription (merchantKey -> [transactionIds])
+        const assignmentsByTarget = {};
+        Object.entries(chargeAssignments).forEach(([transactionId, targetKey]) => {
+            if (!assignmentsByTarget[targetKey]) {
+                assignmentsByTarget[targetKey] = [];
+            }
+            assignmentsByTarget[targetKey].push(transactionId);
+        });
+
+        // Process approved detected subscriptions - filter out reassigned charges
+        const processedApproved = approvedItems.map(item => {
+            const reassignedIds = new Set(
+                Object.entries(chargeAssignments)
+                    .filter(([_, targetKey]) => targetKey !== item.merchantKey)
+                    .map(([txnId]) => txnId)
+            );
+
+            // Filter allTransactions to remove reassigned ones
+            const filteredTransactions = (item.allTransactions || [])
+                .filter(t => !reassignedIds.has(t.id));
+
+            if (filteredTransactions.length === 0 && item.allTransactions?.length > 0) {
+                // All transactions were reassigned - mark as empty
+                return null;
+            }
+
+            // Recalculate stats based on remaining transactions
+            if (filteredTransactions.length !== item.allTransactions?.length) {
+                const amounts = filteredTransactions.map(t => t.amount || t.debit || t.credit || 0);
+                const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : 0;
+                const totalSpent = amounts.reduce((a, b) => a + b, 0);
+
+                return {
+                    ...item,
+                    allTransactions: filteredTransactions,
+                    count: filteredTransactions.length,
+                    latestAmount,
+                    totalSpent
+                };
+            }
+
+            return item;
+        }).filter(Boolean); // Remove nulls (fully reassigned items)
+
+        // Process manual items - enhance those that have assigned charges
         const manualItems = manualRecurring
             .filter(m => !approvedItems.some(a => a.merchantKey === m.merchantKey))
-            .map(m => ({
-                merchantKey: m.merchantKey,
-                merchant: m.merchant,
-                baseMerchant: m.merchant,
-                latestAmount: m.amount,
-                frequency: 'Manual',
-                count: 1,
-                isManual: true,
-                effectiveCategory: m.category,
-                nextDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 1 month from now
-                allTransactions: []
-            }));
-        return [...approvedItems, ...manualItems];
-    }, [approvedItems, manualRecurring]);
+            .map(m => {
+                // Check if this manual item has any assigned charges
+                const assignedTxnIds = assignmentsByTarget[m.merchantKey] || [];
+
+                // Find the actual transactions from all transactions
+                const assignedTransactions = transactions.filter(t =>
+                    assignedTxnIds.includes(t.id)
+                );
+
+                const amounts = assignedTransactions.map(t => t.debit || t.credit || t.amount || 0);
+                const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : (m.amount || 0);
+                const totalSpent = amounts.reduce((a, b) => a + b, 0);
+
+                // Calculate next date based on transactions if available
+                let nextDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                if (assignedTransactions.length > 0) {
+                    const sortedByDate = [...assignedTransactions].sort((a, b) =>
+                        new Date(b.date) - new Date(a.date)
+                    );
+                    const lastDate = new Date(sortedByDate[0].date);
+                    nextDate = new Date(lastDate);
+                    nextDate.setMonth(nextDate.getMonth() + 1);
+                }
+
+                return {
+                    merchantKey: m.merchantKey,
+                    merchant: m.displayName || m.merchant,
+                    baseMerchant: m.merchant,
+                    latestAmount,
+                    totalSpent,
+                    frequency: assignedTransactions.length > 0 ? 'Monthly' : 'Manual',
+                    count: Math.max(assignedTransactions.length, 1),
+                    isManual: true,
+                    effectiveCategory: m.category,
+                    nextDate,
+                    allTransactions: assignedTransactions,
+                    firstDate: assignedTransactions.length > 0
+                        ? [...assignedTransactions].sort((a, b) => new Date(a.date) - new Date(b.date))[0]?.date
+                        : null,
+                    lastDate: assignedTransactions.length > 0
+                        ? [...assignedTransactions].sort((a, b) => new Date(b.date) - new Date(a.date))[0]?.date
+                        : null
+                };
+            });
+
+        return [...processedApproved, ...manualItems];
+    }, [approvedItems, manualRecurring, transactions]);
 
     const deniedItems = useMemo(() => {
         return subscriptions.filter(s => denied.includes(s.merchantKey));
