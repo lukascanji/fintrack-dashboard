@@ -20,11 +20,10 @@ export default function SplitChargesModal({
     // Track newly created subscriptions during this session
     const [createdSubs, setCreatedSubs] = useState([]);
 
-    if (!isOpen || !subscription) return null;
-
     // Get all charges for this subscription from transactions
+    // Must be before early return to satisfy React hooks rules
     const subscriptionCharges = useMemo(() => {
-        if (!transactions || !subscription) return [];
+        if (!transactions || !subscription || !isOpen) return [];
 
         // Load existing assignments to filter out already-reassigned charges
         const existingAssignments = JSON.parse(localStorage.getItem(CHARGE_ASSIGNMENTS_KEY) || '{}');
@@ -33,22 +32,29 @@ export default function SplitChargesModal({
             const amount = t.debit || t.credit || t.amount || 0;
             // Match by merchantKey pattern - this is a simplified match
             // In reality we'd want to match the exact charging pattern
-            const matchesAmount = Math.abs(amount - subscription.latestAmount) / subscription.latestAmount < 0.03;
-            const matchesMerchant = t.description?.toUpperCase().includes(subscription.merchant?.toUpperCase().slice(0, 8));
+            const matchesAmount = subscription.latestAmount > 0
+                ? Math.abs(amount - subscription.latestAmount) / subscription.latestAmount < 0.03
+                : false;
+            const merchantSlice = subscription.merchant?.toUpperCase().slice(0, 8) || '';
+            const matchesMerchant = merchantSlice && t.description?.toUpperCase().includes(merchantSlice);
 
             // Check if already assigned elsewhere
             const isReassigned = existingAssignments[t.id] && existingAssignments[t.id] !== subscription.merchantKey;
 
             return matchesAmount && matchesMerchant && !isReassigned;
         }).sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [transactions, subscription]);
+    }, [transactions, subscription, isOpen]);
 
     // Get other subscriptions for dropdown (exclude current)
     const otherSubscriptions = useMemo(() => {
+        if (!subscription || !allSubscriptions) return createdSubs;
         const others = allSubscriptions.filter(s => s.merchantKey !== subscription.merchantKey);
         // Add any newly created subs from this session
         return [...others, ...createdSubs];
     }, [allSubscriptions, subscription, createdSubs]);
+
+    // Early return AFTER hooks
+    if (!isOpen || !subscription) return null;
 
     const handleAssignmentChange = (transactionId, targetKey) => {
         if (targetKey === '__NEW__') {
