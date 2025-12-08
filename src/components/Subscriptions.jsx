@@ -769,6 +769,34 @@ export default function Subscriptions({ transactions }) {
                                                                 >
                                                                     <Scissors size={10} />
                                                                 </button>
+                                                                {/* Email button */}
+                                                                <button
+                                                                    onClick={(e) => toggleEmailSelector(sub.merchantKey, e)}
+                                                                    title="Associate email/account"
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        padding: '2px 6px',
+                                                                        background: emails[sub.merchantKey]
+                                                                            ? 'rgba(59, 130, 246, 0.2)'
+                                                                            : 'rgba(255, 255, 255, 0.1)',
+                                                                        border: 'none',
+                                                                        borderRadius: '10px',
+                                                                        color: emails[sub.merchantKey]
+                                                                            ? 'rgb(59, 130, 246)'
+                                                                            : 'var(--text-secondary)',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.6rem'
+                                                                    }}
+                                                                >
+                                                                    <Mail size={10} />
+                                                                    {emails[sub.merchantKey] && (
+                                                                        <span style={{ maxWidth: '60px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                            {emails[sub.merchantKey]}
+                                                                        </span>
+                                                                    )}
+                                                                </button>
                                                             </div>
                                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                                                                 {sub.frequency} • {sub.count} charges
@@ -898,6 +926,107 @@ export default function Subscriptions({ transactions }) {
                                                             {sharedSubs[sub.merchantKey]?.length > 0 && (
                                                                 <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color)', fontSize: '0.7rem', color: 'var(--accent-success)' }}>
                                                                     Your share: ${(sub.latestAmount / (sharedSubs[sub.merchantKey].length + 1)).toFixed(2)}/mo
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Email selector dropdown */}
+                                                    {emailSelectorOpen === sub.merchantKey && (
+                                                        <div
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            style={{
+                                                                position: 'absolute',
+                                                                left: '220px',
+                                                                top: '100%',
+                                                                zIndex: 100,
+                                                                background: 'var(--bg-card)',
+                                                                border: '1px solid var(--border-color)',
+                                                                borderRadius: '8px',
+                                                                padding: '8px',
+                                                                minWidth: '220px',
+                                                                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+                                                            }}
+                                                        >
+                                                            <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                                                Associate Email/Account
+                                                            </div>
+                                                            <input
+                                                                type="email"
+                                                                placeholder="email@example.com"
+                                                                value={newEmailInput}
+                                                                onChange={(e) => setNewEmailInput(e.target.value)}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter' && newEmailInput.trim()) {
+                                                                        setEmails(prev => ({
+                                                                            ...prev,
+                                                                            [sub.merchantKey]: newEmailInput.trim()
+                                                                        }));
+                                                                        setNewEmailInput('');
+                                                                        setEmailSelectorOpen(null);
+                                                                    }
+                                                                }}
+                                                                autoFocus
+                                                                style={{
+                                                                    width: '100%',
+                                                                    padding: '6px 10px',
+                                                                    background: 'rgba(0, 0, 0, 0.3)',
+                                                                    border: '1px solid var(--border-color)',
+                                                                    borderRadius: '4px',
+                                                                    color: 'var(--text-primary)',
+                                                                    fontSize: '0.8rem',
+                                                                    marginBottom: '8px',
+                                                                    boxSizing: 'border-box'
+                                                                }}
+                                                            />
+                                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        if (newEmailInput.trim()) {
+                                                                            setEmails(prev => ({
+                                                                                ...prev,
+                                                                                [sub.merchantKey]: newEmailInput.trim()
+                                                                            }));
+                                                                            setNewEmailInput('');
+                                                                            setEmailSelectorOpen(null);
+                                                                        }
+                                                                    }}
+                                                                    style={{
+                                                                        flex: 1,
+                                                                        padding: '4px 8px',
+                                                                        background: 'var(--accent-success)',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        color: 'white',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.7rem'
+                                                                    }}
+                                                                >
+                                                                    Save
+                                                                </button>
+                                                                {emails[sub.merchantKey] && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            removeEmail(sub.merchantKey);
+                                                                            setEmailSelectorOpen(null);
+                                                                        }}
+                                                                        style={{
+                                                                            padding: '4px 8px',
+                                                                            background: 'var(--accent-danger)',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            color: 'white',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '0.7rem'
+                                                                        }}
+                                                                    >
+                                                                        Remove
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            {emails[sub.merchantKey] && (
+                                                                <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                                                    Current: {emails[sub.merchantKey]}
                                                                 </div>
                                                             )}
                                                         </div>
