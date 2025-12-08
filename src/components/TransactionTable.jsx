@@ -237,7 +237,8 @@ export default function TransactionTable({ transactions, showToast, onRecategori
             const newEntry = {
                 merchantKey: merchantKey,
                 merchant: txn.merchant,
-                amount: Math.abs(txn.amount),
+                description: txn.description,
+                amount: txn.debit || txn.credit || txn.amount || 0,
                 category: txn.category,
                 dateAdded: new Date().toISOString(),
                 sourceTransactionId: txn.id
