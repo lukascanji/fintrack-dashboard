@@ -180,6 +180,7 @@ const CUSTOM_NAMES_KEY = 'fintrack_recurring_names';
 const CATEGORY_OVERRIDES_KEY = 'fintrack_recurring_categories';
 const SPLITS_KEY = 'fintrack_merchant_splits';
 const GLOBAL_RENAMES_KEY = 'fintrack_global_renames'; // App-wide merchant renames
+const MANUAL_RECURRING_KEY = 'fintrack_manual_recurring'; // Manually added recurring items
 
 const ALL_CATEGORIES = [
     'ENTERTAINMENT', 'DINING', 'GROCERIES', 'SHOPPING', 'TRANSPORTATION',
@@ -377,6 +378,53 @@ export default function Subscriptions({ transactions }) {
         });
     }, [subscriptions, approved, merchantSplits]);
 
+    // Load manual recurring items from localStorage
+    const [manualRecurring, setManualRecurring] = useState(() => {
+        try {
+            const saved = localStorage.getItem(MANUAL_RECURRING_KEY);
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    // Listen for manual recurring changes from TransactionTable
+    useEffect(() => {
+        const handleStorageChange = () => {
+            try {
+                const saved = localStorage.getItem(MANUAL_RECURRING_KEY);
+                setManualRecurring(saved ? JSON.parse(saved) : []);
+            } catch {
+                // ignore
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        window.addEventListener('focus', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('focus', handleStorageChange);
+        };
+    }, []);
+
+    // Merge manual recurring items into approved items
+    const allApprovedItems = useMemo(() => {
+        const manualItems = manualRecurring
+            .filter(m => !approvedItems.some(a => a.merchantKey === m.merchantKey))
+            .map(m => ({
+                merchantKey: m.merchantKey,
+                merchant: m.merchant,
+                baseMerchant: m.merchant,
+                latestAmount: m.amount,
+                frequency: 'Manual',
+                count: 1,
+                isManual: true,
+                effectiveCategory: m.category,
+                nextDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 1 month from now
+                allTransactions: []
+            }));
+        return [...approvedItems, ...manualItems];
+    }, [approvedItems, manualRecurring]);
+
     const deniedItems = useMemo(() => {
         return subscriptions.filter(s => denied.includes(s.merchantKey));
     }, [subscriptions, denied]);
@@ -514,14 +562,14 @@ export default function Subscriptions({ transactions }) {
     }
 
     // Only count approved items in totals
-    const monthlyTotal = approvedItems
-        .filter(s => s.frequency === 'Monthly')
+    const monthlyTotal = allApprovedItems
+        .filter(s => s.frequency === 'Monthly' || s.frequency === 'Manual')
         .reduce((sum, s) => sum + s.latestAmount, 0);
 
     // Group approved items by category (using overrides if set)
     const groupedByCategory = useMemo(() => {
         const groups = {};
-        approvedItems.forEach(item => {
+        allApprovedItems.forEach(item => {
             // Use override if exists, otherwise use item's category
             const effectiveCategory = categoryOverrides[item.merchantKey] || item.category || 'OTHER';
             if (!groups[effectiveCategory]) groups[effectiveCategory] = [];
@@ -529,7 +577,7 @@ export default function Subscriptions({ transactions }) {
             groups[effectiveCategory].push({ ...item, effectiveCategory });
         });
         return groups;
-    }, [approvedItems, categoryOverrides]);
+    }, [allApprovedItems, categoryOverrides]);
 
     const toggleExpand = (index) => {
         setExpandedIndex(expandedIndex === index ? null : index);
@@ -545,7 +593,7 @@ export default function Subscriptions({ transactions }) {
                 <div className="card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <div className="card-title" style={{ margin: 0 }}>Recurring Charges</div>
-                        {approvedItems.length > 0 && (
+                        {allApprovedItems.length > 0 && (
                             <div style={{
                                 padding: '6px 12px',
                                 background: 'var(--gradient-primary)',
@@ -558,7 +606,7 @@ export default function Subscriptions({ transactions }) {
                         )}
                     </div>
 
-                    {approvedItems.length === 0 ? (
+                    {allApprovedItems.length === 0 ? (
                         <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                             No approved recurring charges yet.
                             <div style={{ fontSize: '0.75rem', marginTop: '8px' }}>

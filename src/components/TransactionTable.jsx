@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, ChevronDown, ChevronUp, CreditCard, Building2, Calendar, Users, Plus, Check, X, Edit2 } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, CreditCard, Building2, Calendar, Users, Plus, Check, X, Edit2, RefreshCw } from 'lucide-react';
 import { filterByDateRange } from './DateRangeFilter';
 import { saveCategoryRule, getMerchantKey } from '../utils/categorize';
 
@@ -7,6 +7,7 @@ const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const PEOPLE_LIST_KEY = 'fintrack_people_list';
 const RECENT_PEOPLE_KEY = 'fintrack_recent_people';
 const GLOBAL_RENAMES_KEY = 'fintrack_global_renames';
+const MANUAL_RECURRING_KEY = 'fintrack_manual_recurring';
 
 const ALL_CATEGORIES = [
     'DINING', 'GROCERIES', 'SHOPPING', 'TRANSPORTATION', 'ENTERTAINMENT',
@@ -183,6 +184,40 @@ export default function TransactionTable({ transactions, showToast, onRecategori
             return updated;
         });
         setNameSelectorOpen(null);
+    };
+
+    // Add transaction to manual recurring list
+    const addToRecurring = (txn) => {
+        try {
+            const existing = JSON.parse(localStorage.getItem(MANUAL_RECURRING_KEY) || '[]');
+            const merchantKey = getMerchantKey(txn.merchant);
+
+            // Check if already added
+            if (existing.some(item => item.merchantKey === merchantKey)) {
+                return; // Already in recurring
+            }
+
+            const newEntry = {
+                merchantKey: merchantKey,
+                merchant: txn.merchant,
+                amount: Math.abs(txn.amount),
+                category: txn.category,
+                dateAdded: new Date().toISOString(),
+                sourceTransactionId: txn.id
+            };
+
+            existing.push(newEntry);
+            localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(existing));
+
+            // Also auto-approve it
+            const approved = JSON.parse(localStorage.getItem('fintrack_recurring_approved') || '[]');
+            if (!approved.includes(merchantKey)) {
+                approved.push(merchantKey);
+                localStorage.setItem('fintrack_recurring_approved', JSON.stringify(approved));
+            }
+        } catch (e) {
+            console.error('Failed to add to recurring:', e);
+        }
     };
 
     const DATE_PRESETS = [
@@ -399,6 +434,7 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                             </th>
                             <th>Account</th>
                             <th style={{ width: '100px' }}>Person</th>
+                            <th style={{ width: '40px' }}></th>
                         </tr>
                     </thead>
                     <tbody key={`${categoryFilter}-${accountFilter}-${search}`}>
@@ -661,6 +697,26 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                                             )}
                                         </div>
                                     )}
+                                </td>
+                                <td style={{ padding: '4px' }}>
+                                    <button
+                                        onClick={() => addToRecurring(t)}
+                                        title="Add to Recurring"
+                                        style={{
+                                            padding: '4px 6px',
+                                            background: 'rgba(99, 102, 241, 0.2)',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            color: 'var(--accent-primary)',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '2px',
+                                            fontSize: '0.65rem'
+                                        }}
+                                    >
+                                        <RefreshCw size={10} />
+                                    </button>
                                 </td>
                             </tr>
                         ))}
