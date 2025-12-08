@@ -344,6 +344,15 @@ export default function Subscriptions({ transactions }) {
         }));
     };
 
+    // Clear all splits (for cleaning up old cluster-naming data)
+    const clearAllSplits = () => {
+        setMerchantSplits({});
+        localStorage.removeItem(SPLITS_KEY);
+    };
+
+    // Check if there are any splits saved
+    const hasSplits = Object.keys(merchantSplits).length > 0;
+
 
     // Compute pending, approved, and denied items
     const pendingItems = useMemo(() => {
@@ -572,17 +581,37 @@ export default function Subscriptions({ transactions }) {
                 <div className="card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <div className="card-title" style={{ margin: 0 }}>Recurring Charges</div>
-                        {allApprovedItems.length > 0 && (
-                            <div style={{
-                                padding: '6px 12px',
-                                background: 'var(--gradient-primary)',
-                                borderRadius: '20px',
-                                fontSize: '0.875rem',
-                                fontWeight: '600'
-                            }}>
-                                ~${monthlyTotal.toFixed(0)}/mo
-                            </div>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {hasSplits && (
+                                <button
+                                    onClick={clearAllSplits}
+                                    title="Clear old split data"
+                                    style={{
+                                        padding: '4px 10px',
+                                        background: 'rgba(239, 68, 68, 0.1)',
+                                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                                        borderRadius: '12px',
+                                        color: 'var(--accent-danger)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.7rem',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    Clear Splits
+                                </button>
+                            )}
+                            {allApprovedItems.length > 0 && (
+                                <div style={{
+                                    padding: '6px 12px',
+                                    background: 'var(--gradient-primary)',
+                                    borderRadius: '20px',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '600'
+                                }}>
+                                    ~${monthlyTotal.toFixed(0)}/mo
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {allApprovedItems.length === 0 ? (
