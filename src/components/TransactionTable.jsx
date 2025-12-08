@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search, ChevronDown, ChevronUp, CreditCard, Building2, Calendar, Users, Plus, Check, X, Edit2 } from 'lucide-react';
 import { filterByDateRange } from './DateRangeFilter';
-import { saveCategoryRule } from '../utils/categorize';
+import { saveCategoryRule, getMerchantKey } from '../utils/categorize';
 
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const PEOPLE_LIST_KEY = 'fintrack_people_list';
 const RECENT_PEOPLE_KEY = 'fintrack_recent_people';
+const GLOBAL_RENAMES_KEY = 'fintrack_global_renames';
 
 const ALL_CATEGORIES = [
     'DINING', 'GROCERIES', 'SHOPPING', 'TRANSPORTATION', 'ENTERTAINMENT',
@@ -76,6 +77,50 @@ export default function TransactionTable({ transactions, showToast, onRecategori
     useEffect(() => {
         localStorage.setItem(PEOPLE_LIST_KEY, JSON.stringify(peopleList));
     }, [peopleList]);
+
+    // Load global renames from localStorage
+    const [globalRenames, setGlobalRenames] = useState(() => {
+        try {
+            const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch {
+            return {};
+        }
+    });
+
+    // Listen for localStorage changes (from Recurring tab)
+    useEffect(() => {
+        const handleStorageChange = () => {
+            try {
+                const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
+                setGlobalRenames(saved ? JSON.parse(saved) : {});
+            } catch {
+                // ignore
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
+
+    // Get display name for merchant (apply global renames)
+    const getDisplayMerchant = (txn) => {
+        // Try to find a matching rename by checking all possible keys
+        const merchantKey = getMerchantKey(txn.merchant);
+
+        // Check for exact merchantKey match with amount
+        const amountKey = `${merchantKey}-${Math.abs(txn.amount).toFixed(2)}`;
+        if (globalRenames[amountKey]?.displayName) {
+            return globalRenames[amountKey].displayName;
+        }
+
+        // Check for merchantKey match without amount
+        if (globalRenames[merchantKey]?.displayName) {
+            return globalRenames[merchantKey].displayName;
+        }
+
+        // Fall back to original merchant
+        return txn.merchant;
+    };
 
     // Load recent people usage for ordering
     const [recentPeople, setRecentPeople] = useState(() => {
@@ -363,7 +408,7 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                                 <td style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {t.description}
                                 </td>
-                                <td>{t.merchant}</td>
+                                <td>{getDisplayMerchant(t)}</td>
                                 <td style={{ position: 'relative' }}>
                                     <span
                                         className={`category-badge ${t.category === 'GAMBLING' ? 'gambling' : ''} ${t.category === 'FEES' ? 'fees' : ''}`}

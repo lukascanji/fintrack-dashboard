@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw, X, Users, ArrowDownLeft } from 'lucide-react';
-import { getCategoryColor } from '../utils/categorize';
+import { getCategoryColor, getMerchantKey } from '../utils/categorize';
 import { detectSubscriptions } from './Subscriptions';
 
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
+const GLOBAL_RENAMES_KEY = 'fintrack_global_renames';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -57,6 +58,47 @@ export default function CalendarView({ transactions }) {
             window.removeEventListener('focus', handleStorageChange);
         };
     }, []);
+
+    // Load global renames from localStorage
+    const [globalRenames, setGlobalRenames] = useState(() => {
+        try {
+            const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch {
+            return {};
+        }
+    });
+
+    // Listen for global renames changes
+    useEffect(() => {
+        const handleRenameChange = () => {
+            try {
+                const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
+                setGlobalRenames(saved ? JSON.parse(saved) : {});
+            } catch {
+                // ignore
+            }
+        };
+        window.addEventListener('storage', handleRenameChange);
+        window.addEventListener('focus', handleRenameChange);
+        return () => {
+            window.removeEventListener('storage', handleRenameChange);
+            window.removeEventListener('focus', handleRenameChange);
+        };
+    }, []);
+
+    // Get display name for merchant (apply global renames)
+    const getDisplayMerchant = (t) => {
+        const merchantKey = getMerchantKey(t.merchant);
+        const amountKey = `${merchantKey}-${Math.abs(t.amount || t.debit || t.credit || 0).toFixed(2)}`;
+        if (globalRenames[amountKey]?.displayName) {
+            return globalRenames[amountKey].displayName;
+        }
+        if (globalRenames[merchantKey]?.displayName) {
+            return globalRenames[merchantKey].displayName;
+        }
+        return t.merchant;
+    };
 
     // Detect subscriptions for future projections
     const subscriptions = useMemo(() => detectSubscriptions(transactions), [transactions]);
@@ -261,7 +303,7 @@ export default function CalendarView({ transactions }) {
                                                     borderRadius: '50%',
                                                     background: t.credit > 0 ? 'var(--accent-success)' : getCategoryColor(t.category)
                                                 }}
-                                                title={`${t.merchant}: ${t.debit > 0 ? '-$' + t.debit.toFixed(2) : '+$' + t.credit.toFixed(2)}`}
+                                                title={`${getDisplayMerchant(t)}: ${t.debit > 0 ? '-$' + t.debit.toFixed(2) : '+$' + t.credit.toFixed(2)}`}
                                             />
                                         ))}
                                         {cell.transactions.length > 5 && (
@@ -361,7 +403,7 @@ export default function CalendarView({ transactions }) {
                                     >
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>{t.merchant}</span>
+                                                <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>{getDisplayMerchant(t)}</span>
                                                 {personNames[t.id] && (
                                                     <span style={{
                                                         display: 'inline-flex',
