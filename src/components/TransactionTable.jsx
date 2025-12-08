@@ -293,6 +293,73 @@ export default function TransactionTable({ transactions, showToast, onRecategori
         }
     };
 
+    // Add ALL matching transactions to recurring (groups by merchantKey)
+    const addAllMatchingToRecurring = (txn) => {
+        try {
+            const merchantKey = getMerchantKey(txn.description);
+            const amount = txn.debit || txn.credit || txn.amount || 0;
+
+            // Find all transactions with same merchantKey and similar amount
+            const matchingTxns = transactions.filter(t => {
+                const tKey = getMerchantKey(t.description);
+                const tAmount = t.debit || t.credit || t.amount || 0;
+                // Match by merchantKey and fuzzy amount (within 3%)
+                return tKey === merchantKey &&
+                    (tAmount === 0 || amount === 0 ? tAmount === amount :
+                        Math.abs(tAmount - amount) / Math.max(tAmount, amount) < 0.03);
+            });
+
+            const existing = JSON.parse(localStorage.getItem(MANUAL_RECURRING_KEY) || '[]');
+
+            // Check if already added
+            if (existing.some(item => item.merchantKey === merchantKey)) {
+                return; // Already in recurring
+            }
+
+            const newEntry = {
+                merchantKey: merchantKey,
+                merchant: txn.merchant,
+                description: txn.description,
+                amount: amount,
+                category: txn.category,
+                dateAdded: new Date().toISOString(),
+                sourceTransactionId: txn.id,
+                // Store matching info for Recurring tab display
+                matchCount: matchingTxns.length,
+                matchDates: matchingTxns.map(t => t.date).sort((a, b) => new Date(a) - new Date(b)),
+                isAllMatching: true
+            };
+
+            existing.push(newEntry);
+            localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(existing));
+
+            // Also auto-approve it
+            const approved = JSON.parse(localStorage.getItem('fintrack_recurring_approved') || '[]');
+            if (!approved.includes(merchantKey)) {
+                approved.push(merchantKey);
+                localStorage.setItem('fintrack_recurring_approved', JSON.stringify(approved));
+            }
+
+            // Refresh approvedRecurring state immediately
+            setApprovedRecurring(approved);
+        } catch (e) {
+            console.error('Failed to add all matching to recurring:', e);
+        }
+    };
+
+    // Count matching transactions for a given transaction
+    const countMatching = (txn) => {
+        const merchantKey = getMerchantKey(txn.description);
+        const amount = txn.debit || txn.credit || txn.amount || 0;
+        return transactions.filter(t => {
+            const tKey = getMerchantKey(t.description);
+            const tAmount = t.debit || t.credit || t.amount || 0;
+            return tKey === merchantKey &&
+                (tAmount === 0 || amount === 0 ? tAmount === amount :
+                    Math.abs(tAmount - amount) / Math.max(tAmount, amount) < 0.03);
+        }).length;
+    };
+
     const DATE_PRESETS = [
         { label: 'All Time', value: 'all' },
         { label: 'This Month', value: 'thisMonth' },
@@ -787,7 +854,7 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                                 <td style={{ padding: '4px' }}>
                                     <button
                                         onClick={() => !isRecurring(t) && addToRecurring(t)}
-                                        title={isRecurring(t) ? "Already in Recurring" : "Add to Recurring"}
+                                        title={isRecurring(t) ? "Already in Recurring" : "Add Single to Recurring"}
                                         style={{
                                             padding: '4px 6px',
                                             background: isRecurring(t)
@@ -809,6 +876,27 @@ export default function TransactionTable({ transactions, showToast, onRecategori
                                         <RefreshCw size={10} />
                                         {isRecurring(t) && <Check size={8} />}
                                     </button>
+                                    {!isRecurring(t) && countMatching(t) > 1 && (
+                                        <button
+                                            onClick={() => addAllMatchingToRecurring(t)}
+                                            title={`Add all ${countMatching(t)} matching transactions`}
+                                            style={{
+                                                padding: '4px 6px',
+                                                background: 'rgba(249, 115, 22, 0.2)',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                color: 'var(--accent-warning)',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '2px',
+                                                fontSize: '0.65rem'
+                                            }}
+                                        >
+                                            <Plus size={10} />
+                                            <span style={{ fontWeight: 600 }}>{countMatching(t)}</span>
+                                        </button>
+                                    )}
                                 </td>
                             </tr>
                         ))}
