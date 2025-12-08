@@ -352,31 +352,10 @@ export default function Subscriptions({ transactions }) {
         );
     }, [subscriptions, approved, denied]);
 
-    // Apply splits to approved items - transform subscription names based on saved splits
+    // Filter approved items (splits are now only for bundles, naming handled by globalRenames)
     const approvedItems = useMemo(() => {
-        const approvedSubs = subscriptions.filter(s => approved.includes(s.merchantKey));
-
-        return approvedSubs.map(sub => {
-            // Check if this subscription has saved splits
-            const splits = merchantSplits[sub.merchantKey];
-            if (!splits || !splits.clusters) return sub;
-
-            // Find cluster name for this subscription's amount
-            const amountKey = sub.latestAmount.toFixed(2);
-            const clusterInfo = splits.clusters[amountKey];
-
-            if (clusterInfo && clusterInfo.name) {
-                return {
-                    ...sub,
-                    displayName: clusterInfo.name,
-                    splitCategory: clusterInfo.category,
-                    isSplit: true
-                };
-            }
-
-            return sub;
-        });
-    }, [subscriptions, approved, merchantSplits]);
+        return subscriptions.filter(s => approved.includes(s.merchantKey));
+    }, [subscriptions, approved]);
 
     // Load manual recurring items from localStorage
     const [manualRecurring, setManualRecurring] = useState(() => {
@@ -728,15 +707,6 @@ export default function Subscriptions({ transactions }) {
                                                                             <Pencil size={10} />
                                                                         </button>
                                                                     </>
-                                                                )}
-                                                                {sub.isSplit && (
-                                                                    <span style={{
-                                                                        fontSize: '0.55rem',
-                                                                        padding: '1px 4px',
-                                                                        background: 'rgba(251, 191, 36, 0.2)',
-                                                                        color: 'var(--accent-warning)',
-                                                                        borderRadius: '4px'
-                                                                    }}>SPLIT</span>
                                                                 )}
                                                                 {/* Category badge */}
                                                                 <span
