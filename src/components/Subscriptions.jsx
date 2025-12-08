@@ -168,7 +168,7 @@ export function detectSubscriptions(transactions) {
 }
 
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users, Scissors, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users, Scissors, Pencil, Trash2 } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 
 const EMAIL_STORAGE_KEY = 'fintrack_subscription_emails';
@@ -911,7 +911,7 @@ export default function Subscriptions({ transactions }) {
                                                                             fontSize: '0.6rem'
                                                                         }}
                                                                     >
-                                                                        <X size={10} />
+                                                                        <Trash2 size={10} />
                                                                     </button>
                                                                 )}
                                                             </div>
