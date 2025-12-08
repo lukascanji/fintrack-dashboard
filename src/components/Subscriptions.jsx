@@ -168,7 +168,7 @@ export function detectSubscriptions(transactions) {
 }
 
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users, Scissors } from 'lucide-react';
+import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users, Scissors, Pencil } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 
 const EMAIL_STORAGE_KEY = 'fintrack_subscription_emails';
@@ -179,6 +179,7 @@ const DENIED_KEY = 'fintrack_recurring_denied';
 const CUSTOM_NAMES_KEY = 'fintrack_recurring_names';
 const CATEGORY_OVERRIDES_KEY = 'fintrack_recurring_categories';
 const SPLITS_KEY = 'fintrack_merchant_splits';
+const GLOBAL_RENAMES_KEY = 'fintrack_global_renames'; // App-wide merchant renames
 
 const ALL_CATEGORIES = [
     'ENTERTAINMENT', 'DINING', 'GROCERIES', 'SHOPPING', 'TRANSPORTATION',
@@ -209,6 +210,52 @@ export default function Subscriptions({ transactions }) {
     useEffect(() => {
         localStorage.setItem(EMAIL_STORAGE_KEY, JSON.stringify(emails));
     }, [emails]);
+
+    // Global renames state (app-wide merchant name mappings)
+    const [globalRenames, setGlobalRenames] = useState(() => {
+        try {
+            const saved = localStorage.getItem(GLOBAL_RENAMES_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch {
+            return {};
+        }
+    });
+
+    useEffect(() => {
+        localStorage.setItem(GLOBAL_RENAMES_KEY, JSON.stringify(globalRenames));
+    }, [globalRenames]);
+
+    // Inline rename editing state
+    const [renamingKey, setRenamingKey] = useState(null); // merchantKey being renamed
+    const [renameInput, setRenameInput] = useState('');
+
+    // Handler to start renaming
+    const startRename = (sub) => {
+        setRenamingKey(sub.merchantKey);
+        setRenameInput(globalRenames[sub.merchantKey]?.displayName || sub.merchant);
+    };
+
+    // Handler to save rename
+    const saveRename = (merchantKey, originalMerchant, amount) => {
+        if (renameInput.trim()) {
+            setGlobalRenames(prev => ({
+                ...prev,
+                [merchantKey]: {
+                    displayName: renameInput.trim(),
+                    originalMerchant: originalMerchant,
+                    amount: amount
+                }
+            }));
+        }
+        setRenamingKey(null);
+        setRenameInput('');
+    };
+
+    // Handler to cancel rename
+    const cancelRename = () => {
+        setRenamingKey(null);
+        setRenameInput('');
+    };
 
     // Approval workflow state
     const [approved, setApproved] = useState(() => {
@@ -570,7 +617,70 @@ export default function Subscriptions({ transactions }) {
                                                         </div>
                                                         <div>
                                                             <div style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                {sub.displayName || customNames[sub.merchantKey] || sub.merchant}
+                                                                {renamingKey === sub.merchantKey ? (
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={renameInput}
+                                                                            onChange={(e) => setRenameInput(e.target.value)}
+                                                                            onKeyDown={(e) => {
+                                                                                if (e.key === 'Enter') saveRename(sub.merchantKey, sub.baseMerchant || sub.merchant, sub.latestAmount);
+                                                                                if (e.key === 'Escape') cancelRename();
+                                                                            }}
+                                                                            autoFocus
+                                                                            style={{
+                                                                                padding: '4px 8px',
+                                                                                background: 'rgba(0,0,0,0.3)',
+                                                                                border: '1px solid var(--accent-primary)',
+                                                                                borderRadius: '4px',
+                                                                                color: 'var(--text-primary)',
+                                                                                fontSize: '0.9rem',
+                                                                                width: '180px'
+                                                                            }}
+                                                                        />
+                                                                        <button
+                                                                            onClick={() => saveRename(sub.merchantKey, sub.baseMerchant || sub.merchant, sub.latestAmount)}
+                                                                            style={{ background: 'var(--accent-success)', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer' }}
+                                                                        >
+                                                                            <Check size={12} color="white" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={cancelRename}
+                                                                            style={{ background: 'var(--accent-danger)', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer' }}
+                                                                        >
+                                                                            <X size={12} color="white" />
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <>
+                                                                        {globalRenames[sub.merchantKey]?.displayName || sub.displayName || customNames[sub.merchantKey] || sub.merchant}
+                                                                        {/* Rename button */}
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                startRename(sub);
+                                                                            }}
+                                                                            title="Rename subscription"
+                                                                            style={{
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                padding: '2px 4px',
+                                                                                background: globalRenames[sub.merchantKey]
+                                                                                    ? 'rgba(99, 102, 241, 0.2)'
+                                                                                    : 'rgba(255, 255, 255, 0.1)',
+                                                                                border: 'none',
+                                                                                borderRadius: '4px',
+                                                                                color: globalRenames[sub.merchantKey]
+                                                                                    ? 'var(--accent-primary)'
+                                                                                    : 'var(--text-secondary)',
+                                                                                cursor: 'pointer',
+                                                                                fontSize: '0.6rem'
+                                                                            }}
+                                                                        >
+                                                                            <Pencil size={10} />
+                                                                        </button>
+                                                                    </>
+                                                                )}
                                                                 {sub.isSplit && (
                                                                     <span style={{
                                                                         fontSize: '0.55rem',
@@ -639,7 +749,7 @@ export default function Subscriptions({ transactions }) {
                                                                         e.stopPropagation();
                                                                         openSplitModal(sub);
                                                                     }}
-                                                                    title="Split umbrella merchant"
+                                                                    title="Split bundled transaction"
                                                                     style={{
                                                                         display: 'inline-flex',
                                                                         alignItems: 'center',
