@@ -540,15 +540,30 @@ export default function Subscriptions({ transactions }) {
 
         // Process approved detected subscriptions - filter out reassigned charges
         const processedApproved = approvedItems.map(item => {
-            const reassignedIds = new Set(
+            // Only filter transactions that:
+            // 1. Are in THIS subscription's allTransactions (have a matching ID)
+            // 2. AND have been explicitly reassigned to a DIFFERENT subscription
+            const thisSubTransactionIds = new Set(
+                (item.allTransactions || []).map(t => t.id).filter(Boolean)
+            );
+
+            // Get IDs of transactions from THIS sub that were reassigned elsewhere
+            const reassignedFromThisSub = new Set(
                 Object.entries(chargeAssignments)
-                    .filter(([_, targetKey]) => targetKey !== item.merchantKey)
+                    .filter(([txnId, targetKey]) =>
+                        thisSubTransactionIds.has(txnId) && targetKey !== item.merchantKey
+                    )
                     .map(([txnId]) => txnId)
             );
 
-            // Filter allTransactions to remove reassigned ones
+            // If no reassignments from this sub, return unchanged
+            if (reassignedFromThisSub.size === 0) {
+                return item;
+            }
+
+            // Filter allTransactions to remove only the reassigned ones
             const filteredTransactions = (item.allTransactions || [])
-                .filter(t => !reassignedIds.has(t.id));
+                .filter(t => !t.id || !reassignedFromThisSub.has(t.id));
 
             if (filteredTransactions.length === 0 && item.allTransactions?.length > 0) {
                 // All transactions were reassigned - mark as empty
@@ -556,21 +571,17 @@ export default function Subscriptions({ transactions }) {
             }
 
             // Recalculate stats based on remaining transactions
-            if (filteredTransactions.length !== item.allTransactions?.length) {
-                const amounts = filteredTransactions.map(t => t.amount || t.debit || t.credit || 0);
-                const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : 0;
-                const totalSpent = amounts.reduce((a, b) => a + b, 0);
+            const amounts = filteredTransactions.map(t => t.amount || t.debit || t.credit || 0);
+            const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : 0;
+            const totalSpent = amounts.reduce((a, b) => a + b, 0);
 
-                return {
-                    ...item,
-                    allTransactions: filteredTransactions,
-                    count: filteredTransactions.length,
-                    latestAmount,
-                    totalSpent
-                };
-            }
-
-            return item;
+            return {
+                ...item,
+                allTransactions: filteredTransactions,
+                count: filteredTransactions.length,
+                latestAmount,
+                totalSpent
+            };
         }).filter(Boolean); // Remove nulls (fully reassigned items)
 
         // Process manual items - enhance those that have assigned charges
