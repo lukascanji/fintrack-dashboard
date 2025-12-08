@@ -303,9 +303,31 @@ export default function Subscriptions({ transactions }) {
         );
     }, [subscriptions, approved, denied]);
 
+    // Apply splits to approved items - transform subscription names based on saved splits
     const approvedItems = useMemo(() => {
-        return subscriptions.filter(s => approved.includes(s.merchantKey));
-    }, [subscriptions, approved]);
+        const approvedSubs = subscriptions.filter(s => approved.includes(s.merchantKey));
+
+        return approvedSubs.map(sub => {
+            // Check if this subscription has saved splits
+            const splits = merchantSplits[sub.merchantKey];
+            if (!splits || !splits.clusters) return sub;
+
+            // Find cluster name for this subscription's amount
+            const amountKey = sub.latestAmount.toFixed(2);
+            const clusterInfo = splits.clusters[amountKey];
+
+            if (clusterInfo && clusterInfo.name) {
+                return {
+                    ...sub,
+                    displayName: clusterInfo.name,
+                    splitCategory: clusterInfo.category,
+                    isSplit: true
+                };
+            }
+
+            return sub;
+        });
+    }, [subscriptions, approved, merchantSplits]);
 
     const deniedItems = useMemo(() => {
         return subscriptions.filter(s => denied.includes(s.merchantKey));
@@ -547,7 +569,16 @@ export default function Subscriptions({ transactions }) {
                                                         </div>
                                                         <div>
                                                             <div style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                {customNames[sub.merchantKey] || sub.merchant}
+                                                                {sub.displayName || customNames[sub.merchantKey] || sub.merchant}
+                                                                {sub.isSplit && (
+                                                                    <span style={{
+                                                                        fontSize: '0.55rem',
+                                                                        padding: '1px 4px',
+                                                                        background: 'rgba(251, 191, 36, 0.2)',
+                                                                        color: 'var(--accent-warning)',
+                                                                        borderRadius: '4px'
+                                                                    }}>SPLIT</span>
+                                                                )}
                                                                 {/* Category badge */}
                                                                 <span
                                                                     onClick={(e) => {
@@ -568,7 +599,7 @@ export default function Subscriptions({ transactions }) {
                                                                         gap: '3px'
                                                                     }}
                                                                 >
-                                                                    {sub.effectiveCategory}
+                                                                    {sub.splitCategory || sub.effectiveCategory}
                                                                     <ChevronDown size={10} />
                                                                 </span>
                                                                 {/* Share button */}
