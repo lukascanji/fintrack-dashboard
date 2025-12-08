@@ -5,6 +5,7 @@ import { detectSubscriptions } from './Subscriptions';
 
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const GLOBAL_RENAMES_KEY = 'fintrack_global_renames';
+const APPROVED_KEY = 'fintrack_recurring_approved';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -87,6 +88,34 @@ export default function CalendarView({ transactions }) {
         };
     }, []);
 
+    // Load approved recurring items from localStorage
+    const [approved, setApproved] = useState(() => {
+        try {
+            const saved = localStorage.getItem(APPROVED_KEY);
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    // Listen for changes to approved list (when user approves/denies in Recurring tab)
+    useEffect(() => {
+        const handleApprovedChange = () => {
+            try {
+                const saved = localStorage.getItem(APPROVED_KEY);
+                setApproved(saved ? JSON.parse(saved) : []);
+            } catch {
+                // ignore
+            }
+        };
+        window.addEventListener('storage', handleApprovedChange);
+        window.addEventListener('focus', handleApprovedChange);
+        return () => {
+            window.removeEventListener('storage', handleApprovedChange);
+            window.removeEventListener('focus', handleApprovedChange);
+        };
+    }, []);
+
     // Get display info for merchant (apply global renames)
     // Returns { displayName, originalName, isRenamed }
     const getDisplayMerchantInfo = (t) => {
@@ -147,12 +176,16 @@ export default function CalendarView({ transactions }) {
     }, [transactions]);
 
     // Build projected subscription renewals for FUTURE dates only
+    // ONLY shows projections for APPROVED recurring items
     const projectedRenewals = useMemo(() => {
         const renewals = {};
         const endDate = new Date(currentYear, currentMonth + 3, 0);
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-        subscriptions.forEach(sub => {
+        // Filter to only approved subscriptions
+        const approvedSubs = subscriptions.filter(sub => approved.includes(sub.merchantKey));
+
+        approvedSubs.forEach(sub => {
             let nextDate = new Date(sub.nextDate);
             while (nextDate <= endDate) {
                 // Only show projections for TODAY or FUTURE dates
@@ -177,7 +210,7 @@ export default function CalendarView({ transactions }) {
             }
         });
         return renewals;
-    }, [subscriptions, currentYear, currentMonth, today]);
+    }, [subscriptions, approved, currentYear, currentMonth, today]);
 
     const daysInMonth = getDaysInMonth(currentYear, currentMonth);
     const firstDay = getFirstDayOfMonth(currentYear, currentMonth);
