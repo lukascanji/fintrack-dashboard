@@ -90,6 +90,7 @@ export default function TransactionTable({ transactions, showToast, onRecategori
     });
 
     // Listen for localStorage changes (from Recurring tab)
+    // Note: 'storage' event only fires cross-tab, so we also check on focus
     useEffect(() => {
         const handleStorageChange = () => {
             try {
@@ -100,16 +101,23 @@ export default function TransactionTable({ transactions, showToast, onRecategori
             }
         };
         window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
+        window.addEventListener('focus', handleStorageChange);
+        document.addEventListener('visibilitychange', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('focus', handleStorageChange);
+            document.removeEventListener('visibilitychange', handleStorageChange);
+        };
     }, []);
 
     // Get display name for merchant (apply global renames)
     const getDisplayMerchant = (txn) => {
         // Try to find a matching rename by checking all possible keys
         const merchantKey = getMerchantKey(txn.merchant);
+        const txnAmount = Math.abs(txn.amount).toFixed(2);
 
         // Check for exact merchantKey match with amount
-        const amountKey = `${merchantKey}-${Math.abs(txn.amount).toFixed(2)}`;
+        const amountKey = `${merchantKey}-${txnAmount}`;
         if (globalRenames[amountKey]?.displayName) {
             return globalRenames[amountKey].displayName;
         }
@@ -117,6 +125,17 @@ export default function TransactionTable({ transactions, showToast, onRecategori
         // Check for merchantKey match without amount
         if (globalRenames[merchantKey]?.displayName) {
             return globalRenames[merchantKey].displayName;
+        }
+
+        // Iterate over all renames to find match by originalMerchant + amount
+        for (const [key, rename] of Object.entries(globalRenames)) {
+            if (rename.originalMerchant && rename.amount) {
+                const renameOrigKey = getMerchantKey(rename.originalMerchant);
+                const renameAmount = rename.amount.toFixed(2);
+                if (renameOrigKey === merchantKey && renameAmount === txnAmount) {
+                    return rename.displayName;
+                }
+            }
         }
 
         // Fall back to original merchant
