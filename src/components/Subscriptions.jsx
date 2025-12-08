@@ -167,7 +167,8 @@ export function detectSubscriptions(transactions) {
 }
 
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users } from 'lucide-react';
+import { ChevronDown, ChevronUp, Mail, Plus, Check, X, Users, Scissors } from 'lucide-react';
+import SplitMerchantModal from './SplitMerchantModal';
 
 const EMAIL_STORAGE_KEY = 'fintrack_subscription_emails';
 const SHARED_STORAGE_KEY = 'fintrack_shared_subscriptions';
@@ -176,6 +177,7 @@ const APPROVED_KEY = 'fintrack_recurring_approved';
 const DENIED_KEY = 'fintrack_recurring_denied';
 const CUSTOM_NAMES_KEY = 'fintrack_recurring_names';
 const CATEGORY_OVERRIDES_KEY = 'fintrack_recurring_categories';
+const SPLITS_KEY = 'fintrack_merchant_splits';
 
 const ALL_CATEGORIES = [
     'ENTERTAINMENT', 'DINING', 'GROCERIES', 'SHOPPING', 'TRANSPORTATION',
@@ -188,6 +190,8 @@ export default function Subscriptions({ transactions }) {
     const [expandedApprovedKey, setExpandedApprovedKey] = useState(null); // merchantKey for expanded approved item
     const [emailSelectorOpen, setEmailSelectorOpen] = useState(null); // merchant key for open selector
     const [shareSelectorOpen, setShareSelectorOpen] = useState(null); // merchant key for open share selector
+    const [splitModalOpen, setSplitModalOpen] = useState(false);
+    const [merchantToSplit, setMerchantToSplit] = useState(null);
     const [newEmailInput, setNewEmailInput] = useState('');
 
     // Load saved emails from localStorage (merchant -> email mapping)
@@ -258,6 +262,39 @@ export default function Subscriptions({ transactions }) {
     useEffect(() => {
         localStorage.setItem(CATEGORY_OVERRIDES_KEY, JSON.stringify(categoryOverrides));
     }, [categoryOverrides]);
+
+    // Merchant splits state
+    const [merchantSplits, setMerchantSplits] = useState(() => {
+        try {
+            const saved = localStorage.getItem(SPLITS_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch {
+            return {};
+        }
+    });
+
+    useEffect(() => {
+        localStorage.setItem(SPLITS_KEY, JSON.stringify(merchantSplits));
+    }, [merchantSplits]);
+
+    // Handler for opening split modal
+    const openSplitModal = (sub) => {
+        setMerchantToSplit({
+            merchantKey: sub.merchantKey,
+            merchantName: sub.baseMerchant || sub.merchant,
+            transactions: sub.allTransactions || []
+        });
+        setSplitModalOpen(true);
+    };
+
+    // Handler for saving splits
+    const saveMerchantSplit = (merchantKey, splitData) => {
+        setMerchantSplits(prev => ({
+            ...prev,
+            [merchantKey]: splitData
+        }));
+    };
+
 
     // Compute pending, approved, and denied items
     const pendingItems = useMemo(() => {
@@ -563,6 +600,32 @@ export default function Subscriptions({ transactions }) {
                                                                     {sharedSubs[sub.merchantKey]?.length > 0
                                                                         ? `${sharedSubs[sub.merchantKey].length + 1}`
                                                                         : '+'}
+                                                                </button>
+                                                                {/* Split button */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        openSplitModal(sub);
+                                                                    }}
+                                                                    title="Split umbrella merchant"
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        padding: '2px 6px',
+                                                                        background: merchantSplits[sub.merchantKey]
+                                                                            ? 'rgba(251, 191, 36, 0.2)'
+                                                                            : 'rgba(255, 255, 255, 0.1)',
+                                                                        border: 'none',
+                                                                        borderRadius: '10px',
+                                                                        color: merchantSplits[sub.merchantKey]
+                                                                            ? 'var(--accent-warning)'
+                                                                            : 'var(--text-secondary)',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.6rem'
+                                                                    }}
+                                                                >
+                                                                    <Scissors size={10} />
                                                                 </button>
                                                             </div>
                                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -995,6 +1058,22 @@ export default function Subscriptions({ transactions }) {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Split Merchant Modal */}
+            {splitModalOpen && merchantToSplit && (
+                <SplitMerchantModal
+                    isOpen={splitModalOpen}
+                    onClose={() => {
+                        setSplitModalOpen(false);
+                        setMerchantToSplit(null);
+                    }}
+                    merchantKey={merchantToSplit.merchantKey}
+                    merchantName={merchantToSplit.merchantName}
+                    transactions={merchantToSplit.transactions}
+                    existingSplits={merchantSplits[merchantToSplit.merchantKey]}
+                    onSave={(splitData) => saveMerchantSplit(merchantToSplit.merchantKey, splitData)}
+                />
             )}
         </div>
     );
