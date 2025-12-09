@@ -1,0 +1,29 @@
+
+> dashboard@0.0.0 build
+> vite build
+
+vite v7.2.6 building client environment for production...
+transforming...
+✓ 1718 modules transformed.
+✗ Build failed in 1.17s
+error during build:
+src/components/CalendarView.jsx (4:9): "detectSubscriptions" is not exported by "src/components/Subscriptions.jsx", imported by "src/components/CalendarView.jsx".
+file: /Users/lukas/Desktop/antigravity projects/transaction analysis/dashboard/src/components/CalendarView.jsx:4:9
+
+2: import { ChevronLeft, ChevronRight, RefreshCw, X, Users, ArrowDownLeft } from 'lucide-react';
+3: import { getCategoryColor, getMerchantKey } from '../utils/categorize';
+4: import { detectSubscriptions } from './Subscriptions';
+            ^
+5: 
+6: const NAMES_STORAGE_KEY = 'fintrack_person_names';
+
+    at getRollupError (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/parseAst.js:401:41)
+    at error (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/parseAst.js:397:42)
+    at Module.error (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/node-entry.js:16956:16)
+    at Module.traceVariable (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/node-entry.js:17412:29)
+    at ModuleScope.findVariable (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/node-entry.js:15076:39)
+    at FunctionScope.findVariable (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
+    at FunctionBodyScope.findVariable (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
+    at ReturnValueScope.findVariable (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
+    at FunctionBodyScope.findVariable (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/node-entry.js:5649:38)
+    at Identifier.bind (file:///Users/lukas/Desktop/antigravity%20projects/transaction%20analysis/dashboard/node_modules/rollup/dist/es/shared/node-entry.js:5423:40)

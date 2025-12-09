@@ -1,0 +1,304 @@
+.recurringItem {
+    display: flex;
+    flex-direction: column;
+    /* Changed from row for expansion */
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s;
+    overflow: hidden;
+    /* Ensure children don't overflow borders */
+}
+
+/* New wrapper for the top summary row */
+.summaryRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.recurringItem.expanded {
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 8px;
+    /* Maintain radius */
+    border-bottom: none;
+    /* Bottom border handled by expansion? or keep it? */
+    border: 1px solid var(--accent-primary);
+    /* Highlight border when expanded? */
+}
+
+.leftSection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nameSection {
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mergeCheckbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent-primary);
+}
+
+.mergeIcon {
+    padding: 8px;
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+}
+
+.renameContainer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.renameInput {
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--accent-primary);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    width: 180px;
+}
+
+.actionButton {
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    font-size: 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+}
+
+.actionButton.primary {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--accent-primary);
+}
+
+.actionButton.danger {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-danger);
+}
+
+.actionButton.success {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-success);
+}
+
+.actionButton.warning {
+    background: rgba(251, 191, 36, 0.2);
+    color: var(--accent-warning);
+}
+
+.actionButton.dim {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+}
+
+.categoryBadge {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 10px;
+    color: var(--accent-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+}
+
+.details {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.rightSection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: right;
+}
+
+.amount {
+    font-weight: 600;
+}
+
+.nextDate {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* Dropdowns */
+.dropdown {
+    position: absolute;
+    left: 0;
+    top: 100%;
+    z-index: 100;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px;
+    min-width: 150px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.dropdownItem {
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.dropdownItem:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dropdownItem.active {
+    background: rgba(99, 102, 241, 0.2);
+}
+
+/* Expanded View */
+/* Expanded View */
+.expandedContent {
+    background: linear-gradient(180deg, rgba(30, 30, 35, 0.4) 0%, rgba(15, 15, 20, 0.6) 100%);
+    /* border-top: 1px solid var(--accent-primary);  Optional separator */
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 24px;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    box-shadow: inset 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Stats Row */
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.statCard {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.statCard:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+}
+
+.statLabel {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.statValue {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.statSubtext {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* Content Grid */
+.contentGrid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+}
+
+@media (max-width: 900px) {
+    .contentGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sectionTitle {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chartContainer {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    height: 300px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.historyContainer {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.scrollableHistory {
+    overflow-y: auto;
+    max-height: 250px;
+}
+
+/* Custom Scrollbar for History */
+.scrollableHistory::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollableHistory::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.scrollableHistory::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}

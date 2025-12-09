@@ -1,3 +1,12 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+*.local
+
 # Logs
 logs
 *.log
@@ -7,25 +16,32 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Environment files
+.env
+.env.local
+.env.*
+.env.*.local
 
-# Editor directories and files
+# IDE / Editor
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
+
+# OS files
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Environment files
-.env
-.env.*
-
-# Sensitive data - don't commit financial transaction CSVs
+# Personal data - CSV files with financial data
 *.csv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Vite
+.vite/
