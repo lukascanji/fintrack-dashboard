@@ -1,0 +1,195 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Summary Card */
+.summaryCard {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.summaryTitle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.summaryStats {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.totalCount {
+    font-size: 2.5rem;
+    font-weight: 700;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.totalLabel {
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.summaryBreakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* Section */
+.section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.sectionHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.sectionHeader:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.sectionTitle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.badge {
+    padding: 2px 8px;
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--accent-primary);
+}
+
+.sectionContent {
+    padding: 0 20px 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.emptyMessage {
+    padding: 16px 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* Rules List */
+.rulesList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 16px;
+}
+
+.ruleItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ruleItem:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.ruleContent {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.ruleOriginal {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    word-break: break-word;
+}
+
+.ruleArrow {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.ruleNew {
+    color: var(--accent-primary);
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.categoryBadge {
+    padding: 2px 10px;
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--accent-primary);
+}
+
+.mergeDetails,
+.splitDetails {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: 8px;
+}
+
+.shareList {
+    color: var(--accent-success);
+    font-size: 0.85rem;
+}
+
+.emailValue {
+    color: rgb(59, 130, 246);
+    font-size: 0.85rem;
+}
+
+.deleteBtn {
+    padding: 6px;
+    background: rgba(239, 68, 68, 0.1);
+    border: none;
+    border-radius: 6px;
+    color: var(--accent-danger);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.deleteBtn:hover {
+    background: rgba(239, 68, 68, 0.25);
+}

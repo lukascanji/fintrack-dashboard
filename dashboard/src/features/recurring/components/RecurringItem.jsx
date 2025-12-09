@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     RefreshCw, Check, X, Pencil, ChevronDown, ChevronUp,
     Users, Scissors, Mail, Trash2, Calendar, Activity, DollarSign, TrendingUp, Clock, RotateCcw, Layers
@@ -7,6 +7,7 @@ import { useTransactions } from '../../../context/TransactionContext';
 import { ALL_CATEGORIES } from '../../../utils/constants';
 import PaymentTimeline from './PaymentTimeline';
 import PaymentHistory from './PaymentHistory';
+import Dropdown from '../../../components/Dropdown';
 import styles from './RecurringItem.module.css';
 
 export default function RecurringItem({
@@ -37,6 +38,11 @@ export default function RecurringItem({
     const [shareOpen, setShareOpen] = useState(false);
     const [emailOpen, setEmailOpen] = useState(false);
     const [newEmailInput, setNewEmailInput] = useState('');
+
+    // Refs for dropdown trigger elements (used by Dropdown component for positioning)
+    const categoryRef = useRef(null);
+    const shareRef = useRef(null);
+    const emailRef = useRef(null);
 
     // Renaming Handlers
     const startRename = (e) => {
@@ -173,10 +179,14 @@ export default function RecurringItem({
     const hasEmail = emails[sub.merchantKey];
     const isSplit = merchantSplits[sub.merchantKey];
 
+    // Check if any dropdown is open to elevate z-index
+    const hasOpenDropdown = categoryOpen || shareOpen || emailOpen;
+
     return (
         <div
             onClick={onExpand}
             className={`${styles.recurringItem} ${expanded ? styles.expanded : ''}`}
+            style={hasOpenDropdown ? { zIndex: 999, position: 'relative' } : undefined}
         >
             <div className={styles.summaryRow} style={{ opacity: sub.status === 'Expired' ? 0.6 : 1 }}>
                 <div className={styles.leftSection}>
@@ -300,6 +310,7 @@ export default function RecurringItem({
                             )}
                             {/* Category badge */}
                             <span
+                                ref={categoryRef}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setCategoryOpen(!categoryOpen);
@@ -309,34 +320,35 @@ export default function RecurringItem({
                             >
                                 {sub.splitCategory || sub.effectiveCategory}
                                 <ChevronDown size={10} />
-
-                                {/* Category Dropdown */}
-                                {categoryOpen && (
-                                    <div
-                                        onClick={(e) => e.stopPropagation()}
-                                        className={styles.dropdown}
-                                    >
-                                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                                            Change Category
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            {ALL_CATEGORIES.map(cat => (
-                                                <div
-                                                    key={cat}
-                                                    onClick={() => handleSetCategory(cat)}
-                                                    className={`${styles.dropdownItem} ${sub.effectiveCategory === cat ? styles.active : ''}`}
-                                                >
-                                                    {sub.effectiveCategory === cat && <Check size={12} color="var(--accent-primary)" />}
-                                                    {cat}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
                             </span>
+
+                            {/* Category Dropdown - Portal */}
+                            <Dropdown
+                                isOpen={categoryOpen}
+                                onClose={() => setCategoryOpen(false)}
+                                triggerRef={categoryRef}
+                                minWidth={150}
+                            >
+                                <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                    Change Category
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {ALL_CATEGORIES.map(cat => (
+                                        <div
+                                            key={cat}
+                                            onClick={() => handleSetCategory(cat)}
+                                            className={`${styles.dropdownItem} ${sub.effectiveCategory === cat ? styles.active : ''}`}
+                                        >
+                                            {sub.effectiveCategory === cat && <Check size={12} color="var(--accent-primary)" />}
+                                            {cat}
+                                        </div>
+                                    ))}
+                                </div>
+                            </Dropdown>
 
                             {/* Share button */}
                             <button
+                                ref={shareRef}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setShareOpen(!shareOpen);
@@ -349,7 +361,6 @@ export default function RecurringItem({
                                     color: sharedWith.length > 0
                                         ? 'var(--accent-success)'
                                         : 'var(--text-secondary)',
-                                    position: 'relative',
                                     gap: '4px',
                                     padding: '2px 6px',
                                     borderRadius: '10px'
@@ -357,49 +368,48 @@ export default function RecurringItem({
                             >
                                 <Users size={10} />
                                 {sharedWith.length > 0 ? `${sharedWith.length + 1}` : '+'}
+                            </button>
 
-                                {/* Share Dropdown */}
-                                {shareOpen && (
-                                    <div
-                                        onClick={(e) => e.stopPropagation()}
-                                        className={styles.dropdown}
-                                        style={{ minWidth: '180px' }}
-                                    >
-                                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                                            Split with
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '150px', overflowY: 'auto' }}>
-                                            {peopleList.map((person, j) => (
-                                                <div
-                                                    key={j}
-                                                    onClick={() => toggleSharedWith(person)}
-                                                    className={`${styles.dropdownItem} ${sharedWith.includes(person) ? styles.sharedActive : ''}`}
-                                                    style={{ gap: '8px' }}
-                                                >
-                                                    <div style={{
-                                                        width: '14px',
-                                                        height: '14px',
-                                                        borderRadius: '3px',
-                                                        border: `2px solid ${sharedWith.includes(person) ? 'var(--accent-success)' : 'var(--text-secondary)'}`,
-                                                        background: sharedWith.includes(person) ? 'var(--accent-success)' : 'transparent',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center'
-                                                    }}>
-                                                        {sharedWith.includes(person) && <Check size={8} color="white" />}
-                                                    </div>
-                                                    {person}
-                                                </div>
-                                            ))}
-                                        </div>
-                                        {sharedWith.length > 0 && (
-                                            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color)', fontSize: '0.7rem', color: 'var(--accent-success)' }}>
-                                                Your share: ${(sub.latestAmount / (sharedWith.length + 1)).toFixed(2)}/mo
+                            {/* Share Dropdown - Portal */}
+                            <Dropdown
+                                isOpen={shareOpen}
+                                onClose={() => setShareOpen(false)}
+                                triggerRef={shareRef}
+                                minWidth={180}
+                            >
+                                <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                    Split with
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '150px', overflowY: 'auto' }}>
+                                    {peopleList.map((person, j) => (
+                                        <div
+                                            key={j}
+                                            onClick={() => toggleSharedWith(person)}
+                                            className={`${styles.dropdownItem} ${sharedWith.includes(person) ? styles.sharedActive : ''}`}
+                                            style={{ gap: '8px' }}
+                                        >
+                                            <div style={{
+                                                width: '14px',
+                                                height: '14px',
+                                                borderRadius: '3px',
+                                                border: `2px solid ${sharedWith.includes(person) ? 'var(--accent-success)' : 'var(--text-secondary)'}`,
+                                                background: sharedWith.includes(person) ? 'var(--accent-success)' : 'transparent',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center'
+                                            }}>
+                                                {sharedWith.includes(person) && <Check size={8} color="white" />}
                                             </div>
-                                        )}
+                                            {person}
+                                        </div>
+                                    ))}
+                                </div>
+                                {sharedWith.length > 0 && (
+                                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color)', fontSize: '0.7rem', color: 'var(--accent-success)' }}>
+                                        Your share: ${(sub.latestAmount / (sharedWith.length + 1)).toFixed(2)}/mo
                                     </div>
                                 )}
-                            </button>
+                            </Dropdown>
 
                             {/* Split button */}
                             <button
@@ -426,6 +436,7 @@ export default function RecurringItem({
 
                             {/* Email button */}
                             <button
+                                ref={emailRef}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setEmailOpen(!emailOpen);
@@ -440,7 +451,6 @@ export default function RecurringItem({
                                     color: hasEmail
                                         ? 'rgb(59, 130, 246)'
                                         : 'var(--text-secondary)',
-                                    position: 'relative',
                                     borderRadius: '10px',
                                     padding: '2px 6px',
                                     gap: '4px'
@@ -452,59 +462,58 @@ export default function RecurringItem({
                                         {hasEmail}
                                     </span>
                                 )}
-
-                                {/* Email Dropdown */}
-                                {emailOpen && (
-                                    <div
-                                        onClick={(e) => e.stopPropagation()}
-                                        className={styles.dropdown}
-                                        style={{ minWidth: '220px' }}
-                                    >
-                                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                                            Associate Email/Account
-                                        </div>
-                                        <input
-                                            type="email"
-                                            placeholder="email@example.com"
-                                            value={newEmailInput}
-                                            onChange={(e) => setNewEmailInput(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') handleSaveEmail();
-                                            }}
-                                            autoFocus
-                                            style={{
-                                                width: '100%',
-                                                padding: '6px 10px',
-                                                background: 'rgba(0, 0, 0, 0.3)',
-                                                border: '1px solid var(--border-color)',
-                                                borderRadius: '4px',
-                                                color: 'var(--text-primary)',
-                                                fontSize: '0.8rem',
-                                                marginBottom: '8px',
-                                                boxSizing: 'border-box'
-                                            }}
-                                        />
-                                        <div style={{ display: 'flex', gap: '4px' }}>
-                                            <button
-                                                onClick={handleSaveEmail}
-                                                className={`${styles.actionButton} ${styles.success}`}
-                                                style={{ flex: 1, padding: '4px 8px', fontSize: '0.7rem' }}
-                                            >
-                                                Save
-                                            </button>
-                                            {hasEmail && (
-                                                <button
-                                                    onClick={handleRemoveEmail}
-                                                    className={`${styles.actionButton} ${styles.danger}`}
-                                                    style={{ padding: '4px 8px', fontSize: '0.7rem' }}
-                                                >
-                                                    Remove
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
                             </button>
+
+                            {/* Email Dropdown - Portal */}
+                            <Dropdown
+                                isOpen={emailOpen}
+                                onClose={() => setEmailOpen(false)}
+                                triggerRef={emailRef}
+                                minWidth={220}
+                            >
+                                <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                    Associate Email/Account
+                                </div>
+                                <input
+                                    type="email"
+                                    placeholder="email@example.com"
+                                    value={newEmailInput}
+                                    onChange={(e) => setNewEmailInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleSaveEmail();
+                                    }}
+                                    autoFocus
+                                    style={{
+                                        width: '100%',
+                                        padding: '6px 10px',
+                                        background: 'rgba(0, 0, 0, 0.3)',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '4px',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '0.8rem',
+                                        marginBottom: '8px',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                    <button
+                                        onClick={handleSaveEmail}
+                                        className={`${styles.actionButton} ${styles.success}`}
+                                        style={{ flex: 1, padding: '4px 8px', fontSize: '0.7rem' }}
+                                    >
+                                        Save
+                                    </button>
+                                    {hasEmail && (
+                                        <button
+                                            onClick={handleRemoveEmail}
+                                            className={`${styles.actionButton} ${styles.danger}`}
+                                            style={{ padding: '4px 8px', fontSize: '0.7rem' }}
+                                        >
+                                            Remove
+                                        </button>
+                                    )}
+                                </div>
+                            </Dropdown>
 
                             {/* Remove button for manual items */}
                             {sub.isManual && (

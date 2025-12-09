@@ -9,8 +9,8 @@
     cursor: pointer;
     position: relative;
     transition: background 0.15s;
-    overflow: hidden;
-    /* Ensure children don't overflow borders */
+    overflow: visible;
+    /* Changed from hidden to allow dropdowns to extend outside */
 }
 
 /* New wrapper for the top summary row */
@@ -151,7 +151,7 @@
     position: absolute;
     left: 0;
     top: 100%;
-    z-index: 100;
+    z-index: 1000;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: 8px;
