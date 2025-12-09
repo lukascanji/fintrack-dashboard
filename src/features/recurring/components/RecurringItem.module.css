@@ -1,0 +1,177 @@
+.recurringItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s;
+}
+
+.recurringItem.expanded {
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 8px 8px 0 0;
+    border-bottom: none;
+}
+
+.leftSection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nameSection {
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mergeCheckbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent-primary);
+}
+
+.mergeIcon {
+    padding: 8px;
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+}
+
+.renameContainer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.renameInput {
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--accent-primary);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    width: 180px;
+}
+
+.actionButton {
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    font-size: 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+}
+
+.actionButton.primary {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--accent-primary);
+}
+
+.actionButton.danger {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-danger);
+}
+
+.actionButton.success {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-success);
+}
+
+.actionButton.warning {
+    background: rgba(251, 191, 36, 0.2);
+    color: var(--accent-warning);
+}
+
+.actionButton.dim {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+}
+
+.categoryBadge {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 10px;
+    color: var(--accent-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+}
+
+.details {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.rightSection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: right;
+}
+
+.amount {
+    font-weight: 600;
+}
+
+.nextDate {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* Dropdowns */
+.dropdown {
+    position: absolute;
+    left: 0;
+    top: 100%;
+    z-index: 100;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px;
+    min-width: 150px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.dropdownItem {
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.dropdownItem:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dropdownItem.active {
+    background: rgba(99, 102, 241, 0.2);
+}
+
+.expandedContent {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 16px;
+    margin-top: -1px;
+    position: relative;
+    z-index: 1;
+}

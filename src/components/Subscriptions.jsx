@@ -54,17 +54,10 @@ export default function Subscriptions() {
     };
 
     const handleCreateNewFromSplit = (newSub) => {
-        setApproved(prev => {
-            if (!prev.includes(newSub.merchantKey)) {
-                const updated = [...prev, newSub.merchantKey];
-                localStorage.setItem(APPROVED_KEY, JSON.stringify(updated));
-                return updated;
-            }
-            return prev;
-        });
+        // Update Manual Recurring State & LocalStorage
         const manual = JSON.parse(localStorage.getItem(MANUAL_RECURRING_KEY) || '[]');
         if (!manual.some(m => m.merchantKey === newSub.merchantKey)) {
-            manual.push({
+            const newItem = {
                 merchantKey: newSub.merchantKey,
                 merchant: newSub.merchant,
                 displayName: newSub.displayName,
@@ -72,8 +65,10 @@ export default function Subscriptions() {
                 category: 'OTHER',
                 dateAdded: new Date().toISOString(),
                 isManuallyCreated: true
-            });
-            localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(manual));
+            };
+            const updatedManual = [...manual, newItem];
+            localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(updatedManual));
+            setManualRecurring(prev => [...prev, newItem]);
         }
     };
 
@@ -239,13 +234,45 @@ export default function Subscriptions() {
     const totalToMerge = itemsToMerge.reduce((sum, s) => sum + s.latestAmount, 0);
 
     const approveItem = (merchantKey) => {
-        setApproved(prev => [...prev, merchantKey]);
+        setApproved(prev => {
+            if (prev.includes(merchantKey)) return prev;
+            return [...prev, merchantKey];
+        });
         setDenied(prev => prev.filter(k => k !== merchantKey));
+
+        // Assign transactions to this key (fixes umbrella item linking)
+        const sub = subscriptions.find(s => s.merchantKey === merchantKey);
+        if (sub && sub.allTransactions) {
+            const newAssignments = {};
+            sub.allTransactions.forEach(t => {
+                const tId = getTransactionId(t);
+                // Only assign if not already assigned (preserve manual splits)
+                if (!chargeAssignments[tId]) {
+                    newAssignments[tId] = merchantKey;
+                }
+            });
+            if (Object.keys(newAssignments).length > 0) {
+                setChargeAssignments(prev => ({ ...prev, ...newAssignments }));
+            }
+        }
     };
 
     const denyItem = (merchantKey) => {
         setDenied(prev => [...prev, merchantKey]);
         setApproved(prev => prev.filter(k => k !== merchantKey));
+
+        // Remove assignments for this key
+        setChargeAssignments(prev => {
+            const updated = { ...prev };
+            let hasChanges = false;
+            Object.keys(updated).forEach(tId => {
+                if (updated[tId] === merchantKey) {
+                    delete updated[tId];
+                    hasChanges = true;
+                }
+            });
+            return hasChanges ? updated : prev;
+        });
     };
 
     if (!subscriptions || subscriptions.length === 0) {
@@ -325,11 +352,16 @@ export default function Subscriptions() {
             {splitChargesModalOpen && subscriptionToSplit && (
                 <SplitChargesModal
                     subscription={subscriptionToSplit}
+                    allSubscriptions={allApprovedItems}
                     isOpen={splitChargesModalOpen}
                     onClose={() => setSplitChargesModalOpen(false)}
-                    onCreateNew={handleCreateNewFromSplit}
+                    onCreateNewSubscription={handleCreateNewFromSplit}
+                    onSave={(newAssignments) => {
+                        setChargeAssignments(prev => ({ ...prev, ...newAssignments }));
+                    }}
                 />
             )}
+
 
             {/* Merge Prompt Modal */}
             {showMergePrompt && (

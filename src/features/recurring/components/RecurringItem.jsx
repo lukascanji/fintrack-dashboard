@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import {
     RefreshCw, Check, X, Pencil, ChevronDown, ChevronUp,
-    Users, Scissors, Mail, Trash2, TrendingUp, TrendingDown
+    Users, Scissors, Mail, Trash2
 } from 'lucide-react';
 import { useTransactions } from '../../../context/TransactionContext';
-
-const ALL_CATEGORIES = [
-    'ENTERTAINMENT', 'DINING', 'GROCERIES', 'SHOPPING', 'TRANSPORTATION',
-    'UTILITIES', 'GAMBLING', 'FEES', 'OTHER'
-];
+import { ALL_CATEGORIES } from '../../../utils/constants';
+import PaymentTimeline from './PaymentTimeline';
+import PaymentHistory from './PaymentHistory';
+import styles from './RecurringItem.module.css';
 
 export default function RecurringItem({
     sub,
@@ -149,27 +148,9 @@ export default function RecurringItem({
     return (
         <div
             onClick={onExpand}
-            style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '12px',
-                background: expanded
-                    ? 'rgba(99, 102, 241, 0.1)'
-                    : 'rgba(255, 255, 255, 0.03)',
-                borderRadius: expanded
-                    ? '8px 8px 0 0'
-                    : '8px',
-                border: '1px solid var(--border-color)',
-                borderBottom: expanded
-                    ? 'none'
-                    : '1px solid var(--border-color)',
-                cursor: 'pointer',
-                position: 'relative',
-                transition: 'background 0.15s'
-            }}
+            className={`${styles.recurringItem} ${expanded ? styles.expanded : ''}`}
         >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className={styles.leftSection}>
                 {/* Merge selection checkbox */}
                 <input
                     type="checkbox"
@@ -179,25 +160,16 @@ export default function RecurringItem({
                         onToggleMerge(sub.merchantKey);
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    style={{
-                        width: '16px',
-                        height: '16px',
-                        cursor: 'pointer',
-                        accentColor: 'var(--accent-primary)'
-                    }}
+                    className={styles.mergeCheckbox}
                     title="Select for merge"
                 />
-                <div style={{
-                    padding: '8px',
-                    background: 'rgba(99, 102, 241, 0.2)',
-                    borderRadius: '8px'
-                }}>
+                <div className={styles.mergeIcon}>
                     <RefreshCw size={16} color="var(--accent-primary)" />
                 </div>
                 <div>
-                    <div style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className={styles.nameSection}>
                         {isRenaming ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                            <div className={styles.renameContainer} onClick={e => e.stopPropagation()}>
                                 <input
                                     type="text"
                                     value={renameInput}
@@ -207,20 +179,12 @@ export default function RecurringItem({
                                         if (e.key === 'Escape') cancelRename();
                                     }}
                                     autoFocus
-                                    style={{
-                                        padding: '4px 8px',
-                                        background: 'rgba(0,0,0,0.3)',
-                                        border: '1px solid var(--accent-primary)',
-                                        borderRadius: '4px',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '0.9rem',
-                                        width: '180px'
-                                    }}
+                                    className={styles.renameInput}
                                 />
-                                <button onClick={saveRename} style={{ background: 'var(--accent-success)', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer' }}>
+                                <button onClick={saveRename} className={`${styles.actionButton} ${styles.success}`}>
                                     <Check size={12} color="white" />
                                 </button>
-                                <button onClick={cancelRename} style={{ background: 'var(--accent-danger)', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer' }}>
+                                <button onClick={cancelRename} className={`${styles.actionButton} ${styles.danger}`}>
                                     <X size={12} color="white" />
                                 </button>
                             </div>
@@ -231,20 +195,14 @@ export default function RecurringItem({
                                 <button
                                     onClick={startRename}
                                     title="Rename subscription"
+                                    className={`${styles.actionButton} ${styles.primary} dim`}
                                     style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        padding: '2px 4px',
                                         background: globalRenames[sub.merchantKey]
                                             ? 'rgba(99, 102, 241, 0.2)'
                                             : 'rgba(255, 255, 255, 0.1)',
-                                        border: 'none',
-                                        borderRadius: '4px',
                                         color: globalRenames[sub.merchantKey]
                                             ? 'var(--accent-primary)'
                                             : 'var(--text-secondary)',
-                                        cursor: 'pointer',
-                                        fontSize: '0.6rem'
                                     }}
                                 >
                                     <Pencil size={10} />
@@ -254,17 +212,7 @@ export default function RecurringItem({
                                     <button
                                         onClick={revertRename}
                                         title="Revert to original name"
-                                        style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            padding: '2px 4px',
-                                            background: 'rgba(239, 68, 68, 0.2)',
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            color: 'var(--accent-danger)',
-                                            cursor: 'pointer',
-                                            fontSize: '0.6rem'
-                                        }}
+                                        className={`${styles.actionButton} ${styles.danger}`}
                                     >
                                         <X size={10} />
                                     </button>
@@ -277,18 +225,8 @@ export default function RecurringItem({
                                 e.stopPropagation();
                                 setCategoryOpen(!categoryOpen);
                             }}
-                            style={{
-                                fontSize: '0.6rem',
-                                padding: '2px 6px',
-                                background: 'rgba(99, 102, 241, 0.2)',
-                                borderRadius: '10px',
-                                color: 'var(--accent-primary)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                position: 'relative'
-                            }}
+                            className={styles.categoryBadge}
+                            style={{ position: 'relative' }}
                         >
                             {sub.splitCategory || sub.effectiveCategory}
                             <ChevronDown size={10} />
@@ -297,18 +235,7 @@ export default function RecurringItem({
                             {categoryOpen && (
                                 <div
                                     onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                        position: 'absolute',
-                                        left: '0',
-                                        top: '100%',
-                                        zIndex: 100,
-                                        background: 'var(--bg-card)',
-                                        border: '1px solid var(--border-color)',
-                                        borderRadius: '8px',
-                                        padding: '8px',
-                                        minWidth: '150px',
-                                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                                    }}
+                                    className={styles.dropdown}
                                 >
                                     <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                                         Change Category
@@ -318,18 +245,7 @@ export default function RecurringItem({
                                             <div
                                                 key={cat}
                                                 onClick={() => handleSetCategory(cat)}
-                                                style={{
-                                                    padding: '6px 10px',
-                                                    background: sub.effectiveCategory === cat
-                                                        ? 'rgba(99, 102, 241, 0.2)'
-                                                        : 'rgba(255, 255, 255, 0.05)',
-                                                    borderRadius: '4px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.75rem',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '6px'
-                                                }}
+                                                className={`${styles.dropdownItem} ${sub.effectiveCategory === cat ? styles.active : ''}`}
                                             >
                                                 {sub.effectiveCategory === cat && <Check size={12} color="var(--accent-primary)" />}
                                                 {cat}
@@ -346,22 +262,18 @@ export default function RecurringItem({
                                 e.stopPropagation();
                                 setShareOpen(!shareOpen);
                             }}
+                            className={`${styles.actionButton}`}
                             style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '2px 6px',
                                 background: sharedWith.length > 0
                                     ? 'rgba(16, 185, 129, 0.2)'
                                     : 'rgba(255, 255, 255, 0.1)',
-                                border: 'none',
-                                borderRadius: '10px',
                                 color: sharedWith.length > 0
                                     ? 'var(--accent-success)'
                                     : 'var(--text-secondary)',
-                                cursor: 'pointer',
-                                fontSize: '0.6rem',
-                                position: 'relative'
+                                position: 'relative',
+                                gap: '4px',
+                                padding: '2px 6px',
+                                borderRadius: '10px'
                             }}
                         >
                             <Users size={10} />
@@ -371,18 +283,8 @@ export default function RecurringItem({
                             {shareOpen && (
                                 <div
                                     onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                        position: 'absolute',
-                                        left: '0',
-                                        top: '100%',
-                                        zIndex: 100,
-                                        background: 'var(--bg-card)',
-                                        border: '1px solid var(--border-color)',
-                                        borderRadius: '8px',
-                                        padding: '8px',
-                                        minWidth: '180px',
-                                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                                    }}
+                                    className={styles.dropdown}
+                                    style={{ minWidth: '180px' }}
                                 >
                                     <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                                         Split with
@@ -392,18 +294,8 @@ export default function RecurringItem({
                                             <div
                                                 key={j}
                                                 onClick={() => toggleSharedWith(person)}
-                                                style={{
-                                                    padding: '6px 10px',
-                                                    background: sharedWith.includes(person)
-                                                        ? 'rgba(16, 185, 129, 0.2)'
-                                                        : 'rgba(255, 255, 255, 0.05)',
-                                                    borderRadius: '4px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.75rem',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px'
-                                                }}
+                                                className={`${styles.dropdownItem} ${sharedWith.includes(person) ? styles.sharedActive : ''}`}
+                                                style={{ gap: '8px' }}
                                             >
                                                 <div style={{
                                                     width: '14px',
@@ -437,21 +329,17 @@ export default function RecurringItem({
                                 onSplit(sub);
                             }}
                             title="Split/Reassign Charges"
+                            className={styles.actionButton}
                             style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '2px 6px',
                                 background: isSplit
                                     ? 'rgba(251, 191, 36, 0.2)'
                                     : 'rgba(255, 255, 255, 0.1)',
-                                border: 'none',
-                                borderRadius: '10px',
                                 color: isSplit
                                     ? 'var(--accent-warning)'
                                     : 'var(--text-secondary)',
-                                cursor: 'pointer',
-                                fontSize: '0.6rem'
+                                borderRadius: '10px',
+                                padding: '2px 6px',
+                                gap: '4px'
                             }}
                         >
                             <Scissors size={10} />
@@ -465,22 +353,18 @@ export default function RecurringItem({
                                 setNewEmailInput('');
                             }}
                             title="Associate email/account"
+                            className={styles.actionButton}
                             style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '2px 6px',
                                 background: hasEmail
                                     ? 'rgba(59, 130, 246, 0.2)'
                                     : 'rgba(255, 255, 255, 0.1)',
-                                border: 'none',
-                                borderRadius: '10px',
                                 color: hasEmail
                                     ? 'rgb(59, 130, 246)'
                                     : 'var(--text-secondary)',
-                                cursor: 'pointer',
-                                fontSize: '0.6rem',
-                                position: 'relative'
+                                position: 'relative',
+                                borderRadius: '10px',
+                                padding: '2px 6px',
+                                gap: '4px'
                             }}
                         >
                             <Mail size={10} />
@@ -494,18 +378,8 @@ export default function RecurringItem({
                             {emailOpen && (
                                 <div
                                     onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                        position: 'absolute',
-                                        left: '0',
-                                        top: '100%',
-                                        zIndex: 100,
-                                        background: 'var(--bg-card)',
-                                        border: '1px solid var(--border-color)',
-                                        borderRadius: '8px',
-                                        padding: '8px',
-                                        minWidth: '220px',
-                                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                                    }}
+                                    className={styles.dropdown}
+                                    style={{ minWidth: '220px' }}
                                 >
                                     <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                                         Associate Email/Account
@@ -534,31 +408,16 @@ export default function RecurringItem({
                                     <div style={{ display: 'flex', gap: '4px' }}>
                                         <button
                                             onClick={handleSaveEmail}
-                                            style={{
-                                                flex: 1,
-                                                padding: '4px 8px',
-                                                background: 'var(--accent-success)',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                color: 'white',
-                                                cursor: 'pointer',
-                                                fontSize: '0.7rem'
-                                            }}
+                                            className={`${styles.actionButton} ${styles.success}`}
+                                            style={{ flex: 1, padding: '4px 8px', fontSize: '0.7rem' }}
                                         >
                                             Save
                                         </button>
                                         {hasEmail && (
                                             <button
                                                 onClick={handleRemoveEmail}
-                                                style={{
-                                                    padding: '4px 8px',
-                                                    background: 'var(--accent-danger)',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    color: 'white',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.7rem'
-                                                }}
+                                                className={`${styles.actionButton} ${styles.danger}`}
+                                                style={{ padding: '4px 8px', fontSize: '0.7rem' }}
                                             >
                                                 Remove
                                             </button>
@@ -573,23 +432,14 @@ export default function RecurringItem({
                             <button
                                 onClick={removeManualItem}
                                 title="Remove from recurring"
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    padding: '2px 6px',
-                                    background: 'rgba(239, 68, 68, 0.2)',
-                                    border: 'none',
-                                    borderRadius: '10px',
-                                    color: 'var(--accent-danger)',
-                                    cursor: 'pointer',
-                                    fontSize: '0.6rem'
-                                }}
+                                className={`${styles.actionButton} ${styles.danger}`}
+                                style={{ borderRadius: '10px', padding: '2px 6px' }}
                             >
                                 <Trash2 size={10} />
                             </button>
                         )}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <div className={styles.details}>
                         {sub.frequency} • {sub.count} charges
                         {sharedWith.length > 0 && (
                             <span style={{ marginLeft: '8px', color: 'var(--accent-success)' }}>
@@ -601,10 +451,10 @@ export default function RecurringItem({
             </div>
 
             {/* Right side: Amount and chevron */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className={styles.rightSection}>
                 <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: '600' }}>${sub.latestAmount.toFixed(2)}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <div className={styles.amount}>${sub.latestAmount.toFixed(2)}</div>
+                    <div className={styles.nextDate}>
                         Next: {sub.nextDate.toLocaleDateString()}
                     </div>
                 </div>
@@ -613,166 +463,14 @@ export default function RecurringItem({
                     : <ChevronDown size={16} color="var(--text-secondary)" />}
             </div>
 
-            {/* EXPANDED CONTENT (Timeline) */}
+            {/* EXPANDED CONTENT (Timeline & History) */}
             {expanded && sub.allTransactions && (
                 <div
                     onClick={(e) => e.stopPropagation()} // Prevent click from closing
-                    style={{
-                        background: 'rgba(0, 0, 0, 0.2)',
-                        border: '1px solid var(--border-color)',
-                        borderTop: 'none',
-                        borderRadius: '0 0 8px 8px',
-                        padding: '16px',
-                        marginTop: '-1px', // Merge borders
-                        position: 'relative',
-                        zIndex: 1
-                    }}
+                    className={styles.expandedContent}
                 >
-                    {/* Timeline visualization */}
-                    <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                            Payment Timeline
-                        </div>
-                        <div style={{
-                            overflowX: 'auto',
-                            paddingBottom: '8px',
-                            position: 'relative'
-                        }}>
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'flex-end',
-                                gap: '16px',
-                                minWidth: 'max-content',
-                                paddingTop: '24px'
-                            }}>
-                                {sub.allTransactions.map((txn, idx) => {
-                                    const prevTxn = idx > 0 ? sub.allTransactions[idx - 1] : null;
-                                    const priceIncrease = prevTxn && (txn.amount - prevTxn.amount) > 0.5;
-                                    const priceDecrease = prevTxn && (prevTxn.amount - txn.amount) > 0.5;
-
-                                    return (
-                                        <div key={idx} style={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            position: 'relative'
-                                        }}>
-                                            {/* Price change indicator */}
-                                            {priceIncrease && (
-                                                <div style={{
-                                                    position: 'absolute',
-                                                    top: '-20px',
-                                                    color: 'var(--accent-danger)',
-                                                    fontSize: '0.65rem',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    alignItems: 'center'
-                                                }}>
-                                                    <TrendingUp size={12} />
-                                                    <span>+${(txn.amount - prevTxn.amount).toFixed(2)}</span>
-                                                </div>
-                                            )}
-                                            {priceDecrease && (
-                                                <div style={{
-                                                    position: 'absolute',
-                                                    top: '-20px',
-                                                    color: 'var(--accent-success)',
-                                                    fontSize: '0.65rem',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    alignItems: 'center'
-                                                }}>
-                                                    <TrendingDown size={12} />
-                                                    <span>-${(prevTxn.amount - txn.amount).toFixed(2)}</span>
-                                                </div>
-                                            )}
-                                            {/* Timeline node */}
-                                            <div style={{
-                                                width: '12px',
-                                                height: '12px',
-                                                borderRadius: '50%',
-                                                background: priceIncrease
-                                                    ? 'var(--accent-danger)'
-                                                    : priceDecrease
-                                                        ? 'var(--accent-success)'
-                                                        : 'var(--accent-primary)',
-                                                border: '2px solid var(--bg-card)'
-                                            }} />
-                                            {/* Connecting line */}
-                                            {idx < sub.allTransactions.length - 1 && (
-                                                <div style={{
-                                                    position: 'absolute',
-                                                    top: '50%',
-                                                    left: '14px',
-                                                    width: '16px',
-                                                    height: '2px',
-                                                    background: 'var(--border-color)',
-                                                    transform: 'translateY(-50%)'
-                                                }} />
-                                            )}
-                                            {/* Date label */}
-                                            <div style={{
-                                                marginTop: '4px',
-                                                fontSize: '0.6rem',
-                                                color: 'var(--text-secondary)',
-                                                whiteSpace: 'nowrap'
-                                            }}>
-                                                {new Date(txn.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                            </div>
-                                            {/* Amount */}
-                                            <div style={{
-                                                fontSize: '0.65rem',
-                                                color: 'var(--text-primary)',
-                                                fontWeight: '500'
-                                            }}>
-                                                ${(txn.amount || txn.debit).toFixed(2)}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Transaction table */}
-                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                        Payment History
-                    </div>
-                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ color: 'var(--text-secondary)' }}>
-                                <th style={{ textAlign: 'left', padding: '4px 8px' }}>Date</th>
-                                <th style={{ textAlign: 'right', padding: '4px 8px' }}>Amount</th>
-                                <th style={{ textAlign: 'right', padding: '4px 8px' }}>Change</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {sub.allTransactions.slice().reverse().slice(0, 10).map((txn, j, arr) => {
-                                const amount = txn.amount || txn.debit;
-                                const prevTxn = j < arr.length - 1 ? arr[j + 1] : null;
-                                const prevAmount = prevTxn ? (prevTxn.amount || prevTxn.debit) : amount;
-                                const change = prevTxn ? amount - prevAmount : 0;
-                                return (
-                                    <tr key={j} style={{ borderTop: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '6px 8px' }}>{new Date(txn.date).toLocaleDateString()}</td>
-                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '500' }}>${amount.toFixed(2)}</td>
-                                        <td style={{
-                                            padding: '6px 8px',
-                                            textAlign: 'right',
-                                            color: change > 0 ? 'var(--accent-danger)' : change < 0 ? 'var(--accent-success)' : 'var(--text-secondary)'
-                                        }}>
-                                            {change !== 0 ? `${change > 0 ? '+' : ''}$${change.toFixed(2)}` : '—'}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                    {sub.allTransactions.length > 10 && (
-                        <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                            Showing 10 of {sub.allTransactions.length} payments
-                        </div>
-                    )}
+                    <PaymentTimeline transactions={sub.allTransactions} />
+                    <PaymentHistory transactions={sub.allTransactions} />
                 </div>
             )}
         </div>

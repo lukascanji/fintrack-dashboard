@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Calendar, ChevronDown } from 'lucide-react';
 
-const PRESETS = [
+export const PRESETS = [
     { label: 'All Time', value: 'all' },
     { label: 'This Month', value: 'thisMonth' },
     { label: 'Last Month', value: 'lastMonth' },

@@ -1,8 +1,12 @@
+
 import { useState, useMemo, useEffect } from 'react';
-import { Search, ChevronDown, ChevronUp, CreditCard, Building2, Calendar, Users, Plus, Check, X, Edit2, RefreshCw } from 'lucide-react';
-import { filterByDateRange } from './DateRangeFilter';
+import { Search, ChevronDown, ChevronUp, Plus, Calendar } from 'lucide-react';
+import { filterByDateRange, PRESETS as DATE_PRESETS } from './DateRangeFilter';
 import { saveCategoryRule, getMerchantKey } from '../utils/categorize';
 import { useTransactions } from '../context/TransactionContext';
+import { getTransactionId } from '../utils/transactionId';
+import TransactionRow from '../features/transactions/components/TransactionRow';
+import { ALL_CATEGORIES } from '../utils/constants';
 
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const PEOPLE_LIST_KEY = 'fintrack_people_list';
@@ -10,25 +14,6 @@ const RECENT_PEOPLE_KEY = 'fintrack_recent_people';
 const GLOBAL_RENAMES_KEY = 'fintrack_global_renames';
 const MANUAL_RECURRING_KEY = 'fintrack_manual_recurring';
 const APPROVED_KEY = 'fintrack_recurring_approved';
-
-const ALL_CATEGORIES = [
-    'DINING', 'GROCERIES', 'SHOPPING', 'TRANSPORTATION', 'ENTERTAINMENT',
-    'UTILITIES', 'TRANSFER', 'GAMBLING', 'FEES', 'INCOME', 'OTHER'
-];
-
-// Helper to get account type - now uses accountType from transaction if available
-function getAccountType(transaction) {
-    if (transaction.accountType) return transaction.accountType;
-    // Fallback to source-based detection
-    const source = transaction.source || '';
-    if (source.toLowerCase().includes('chequing') || source.toLowerCase().includes('debit')) {
-        return 'Chequing';
-    }
-    if (source.toLowerCase().includes('credit')) {
-        return 'Credit Card';
-    }
-    return 'Unknown';
-}
 
 export default function TransactionTable({ showToast }) {
     const [search, setSearch] = useState('');
@@ -39,9 +24,6 @@ export default function TransactionTable({ showToast }) {
     const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'spending', 'income'
     const [dateRange, setDateRange] = useState('all');
     const [displayCount, setDisplayCount] = useState(50);
-    const [nameSelectorOpen, setNameSelectorOpen] = useState(null);
-    const [newNameInput, setNewNameInput] = useState('');
-    const [categoryEditOpen, setCategoryEditOpen] = useState(null);
     const [forceRefresh, setForceRefresh] = useState(0);
     const [exitingIds, setExitingIds] = useState(new Set());
 
@@ -51,7 +33,8 @@ export default function TransactionTable({ showToast }) {
         peopleList, setPeopleList,
         globalRenames,
         approvedItems, setApprovedItems,
-        transactions, recategorizeAll
+        transactions, recategorizeAll,
+        chargeAssignments
     } = useTransactions();
 
     // Aliases for compatibility
@@ -62,60 +45,19 @@ export default function TransactionTable({ showToast }) {
     const setApprovedRecurring = setApprovedItems;
     // ---------------------------------
 
-    // Check if a transaction is part of an approved recurring item
-    const isRecurring = (txn) => {
-        const merchantKey = getMerchantKey(txn.description);
-        return approvedRecurring.includes(merchantKey);
+    const getAccountType = (txn) => {
+        if (txn.accountType) return txn.accountType;
+        return (txn.amount || txn.debit || 0) > 0 ? 'Checking' : 'Credit Card';
     };
 
-    // Get display info for merchant (apply global renames)
-    // Returns { displayName, originalName, isRenamed }
-    const getDisplayMerchantInfo = (txn) => {
-        // Use description for key (same as detectSubscriptions in Subscriptions.jsx)
+    // Check if a transaction is part of an approved recurring item
+    const isRecurring = (txn) => {
+        // Check specific assignment (splits/manual)
+        if (chargeAssignments[txn.id]) return true;
+
+        // Check base merchant key
         const merchantKey = getMerchantKey(txn.description);
-        // detectSubscriptions uses t.debit for amount, so we need to match that
-        const txnAmount = (txn.debit || txn.credit || txn.amount || 0).toFixed(2);
-
-        // Check for exact merchantKey match with amount
-        const amountKey = `${merchantKey}-${txnAmount}`;
-        if (globalRenames[amountKey]?.displayName) {
-            return {
-                displayName: globalRenames[amountKey].displayName,
-                originalName: txn.description,
-                isRenamed: true
-            };
-        }
-
-        // Check for merchantKey match without amount
-        if (globalRenames[merchantKey]?.displayName) {
-            return {
-                displayName: globalRenames[merchantKey].displayName,
-                originalName: txn.description,
-                isRenamed: true
-            };
-        }
-
-        // Iterate over all renames to find match by originalMerchant + amount
-        for (const [key, rename] of Object.entries(globalRenames)) {
-            if (rename.originalMerchant && rename.amount) {
-                const renameOrigKey = getMerchantKey(rename.originalMerchant);
-                const renameAmount = rename.amount.toFixed(2);
-                if (renameOrigKey === merchantKey && renameAmount === txnAmount) {
-                    return {
-                        displayName: rename.displayName,
-                        originalName: txn.description,
-                        isRenamed: true
-                    };
-                }
-            }
-        }
-
-        // No rename found
-        return {
-            displayName: txn.description,
-            originalName: txn.description,
-            isRenamed: false
-        };
+        return approvedRecurring.includes(merchantKey);
     };
 
     // Load recent people usage for ordering
@@ -267,6 +209,37 @@ export default function TransactionTable({ showToast }) {
             setApprovedRecurring(approved);
         } catch (e) {
             console.error('Failed to add all matching to recurring:', e);
+        }
+    };
+
+    // Helper to handle category changes from a row
+    const handleCategoryChange = (t, newCategory) => {
+        // Save rule using description as pattern
+        saveCategoryRule(t.description, t.merchant, newCategory);
+
+        // Count how many transactions will be affected
+        const pattern = t.description.toUpperCase();
+        const affectedIds = transactions
+            .filter(txn => txn.description.toUpperCase().includes(pattern))
+            .map(txn => txn.id);
+
+        // If filtering by category, animate items that will disappear
+        if (categoryFilter !== 'all' && categoryFilter !== newCategory) {
+            setExitingIds(new Set(affectedIds));
+
+            // After animation, do the recategorize
+            setTimeout(() => {
+                setExitingIds(new Set());
+                if (onRecategorize) onRecategorize();
+            }, 400);
+        } else {
+            // Immediate recategorize if not filtering
+            if (onRecategorize) onRecategorize();
+        }
+
+        // Show toast notification
+        if (showToast) {
+            showToast(`${affectedIds.length} transaction${affectedIds.length !== 1 ? 's' : ''} → ${newCategory} `, 'success');
         }
     };
 
@@ -500,328 +473,24 @@ export default function TransactionTable({ showToast }) {
                             <th style={{ width: '40px' }}></th>
                         </tr>
                     </thead>
-                    <tbody key={`${categoryFilter}-${accountFilter}-${search}`}>
+                    <tbody key={`${categoryFilter} -${accountFilter} -${search} `}>
                         {displayedTransactions.map((t) => (
-                            <tr key={t.id} className={exitingIds.has(t.id) ? 'exiting' : ''}>
-                                <td>{t.date.toLocaleDateString()}</td>
-                                <td style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {(() => {
-                                        const info = getDisplayMerchantInfo(t);
-                                        return (
-                                            <span
-                                                title={info.isRenamed ? `Original: ${info.originalName}` : undefined}
-                                                style={info.isRenamed ? {
-                                                    color: 'var(--accent-primary)',
-                                                    fontWeight: '500'
-                                                } : undefined}
-                                            >
-                                                {info.displayName}
-                                            </span>
-                                        );
-                                    })()}
-                                </td>
-                                <td>{t.merchant}</td>
-                                <td style={{ position: 'relative' }}>
-                                    <span
-                                        className={`category-badge ${t.category === 'GAMBLING' ? 'gambling' : ''} ${t.category === 'FEES' ? 'fees' : ''}`}
-                                        onClick={() => setCategoryEditOpen(categoryEditOpen === t.id ? null : t.id)}
-                                        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                    >
-                                        {t.category}
-                                        <Edit2 size={10} style={{ opacity: 0.5 }} />
-                                    </span>
-
-                                    {/* Category edit dropdown */}
-                                    {categoryEditOpen === t.id && (
-                                        <div
-                                            onClick={(e) => e.stopPropagation()}
-                                            style={{
-                                                position: 'absolute',
-                                                top: '100%',
-                                                left: 0,
-                                                zIndex: 100,
-                                                background: 'var(--bg-secondary)',
-                                                border: '1px solid var(--border-color)',
-                                                borderRadius: '8px',
-                                                padding: '8px',
-                                                minWidth: '150px',
-                                                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                                            }}
-                                        >
-                                            <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                                                Change Category
-                                            </div>
-                                            <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                                                {ALL_CATEGORIES.map((cat) => (
-                                                    <div
-                                                        key={cat}
-                                                        onClick={() => {
-                                                            // Save rule using description as pattern
-                                                            saveCategoryRule(t.description, t.merchant, cat);
-                                                            setCategoryEditOpen(null);
-
-                                                            // Count how many transactions will be affected
-                                                            const pattern = t.description.toUpperCase();
-                                                            const affectedIds = transactions
-                                                                .filter(txn => txn.description.toUpperCase().includes(pattern))
-                                                                .map(txn => txn.id);
-
-                                                            // If filtering by category, animate items that will disappear
-                                                            if (categoryFilter !== 'all' && categoryFilter !== cat) {
-                                                                setExitingIds(new Set(affectedIds));
-
-                                                                // After animation, do the recategorize
-                                                                setTimeout(() => {
-                                                                    setExitingIds(new Set());
-                                                                    if (onRecategorize) onRecategorize();
-                                                                }, 400);
-                                                            } else {
-                                                                // Immediate recategorize if not filtering
-                                                                if (onRecategorize) onRecategorize();
-                                                            }
-
-                                                            // Show toast notification
-                                                            if (showToast) {
-                                                                showToast(`${affectedIds.length} transaction${affectedIds.length !== 1 ? 's' : ''} → ${cat}`, 'success');
-                                                            }
-                                                        }}
-                                                        style={{
-                                                            padding: '6px 10px',
-                                                            background: cat === t.category ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                                            borderRadius: '4px',
-                                                            marginBottom: '2px',
-                                                            cursor: 'pointer',
-                                                            fontSize: '0.75rem',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between'
-                                                        }}
-                                                    >
-                                                        {cat}
-                                                        {cat === t.category && <Check size={12} color="var(--accent-success)" />}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid var(--border-color)' }}>
-                                                Rule will apply to future imports
-                                            </div>
-                                        </div>
-                                    )}
-                                </td>
-                                <td style={{
-                                    textAlign: 'right',
-                                    fontWeight: '600',
-                                    color: t.credit > 0 ? 'var(--accent-success)' : 'inherit'
-                                }}>
-                                    {t.debit > 0 ? `-$${t.debit.toLocaleString()}` : `+$${t.credit.toLocaleString()}`}
-                                </td>
-                                <td>
-                                    <span style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        fontSize: '0.75rem',
-                                        color: getAccountType(t) === 'Credit Card' ? 'var(--accent-warning)' : 'var(--accent-success)'
-                                    }}>
-                                        {getAccountType(t) === 'Credit Card' ? <CreditCard size={12} /> : <Building2 size={12} />}
-                                        {getAccountType(t)}
-                                    </span>
-                                </td>
-                                <td style={{ position: 'relative' }}>
-                                    {personNames[t.id] ? (
-                                        <span
-                                            onClick={() => setNameSelectorOpen(nameSelectorOpen === t.id ? null : t.id)}
-                                            style={{
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '4px',
-                                                padding: '2px 8px',
-                                                background: 'rgba(99, 102, 241, 0.2)',
-                                                borderRadius: '12px',
-                                                fontSize: '0.7rem',
-                                                color: 'var(--accent-primary)',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            <Users size={10} />
-                                            {personNames[t.id]}
-                                        </span>
-                                    ) : (
-                                        <button
-                                            onClick={() => setNameSelectorOpen(nameSelectorOpen === t.id ? null : t.id)}
-                                            style={{
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                width: '22px',
-                                                height: '22px',
-                                                padding: 0,
-                                                background: 'rgba(255, 255, 255, 0.05)',
-                                                border: '1px dashed var(--border-color)',
-                                                borderRadius: '50%',
-                                                cursor: 'pointer',
-                                                color: 'var(--text-secondary)'
-                                            }}
-                                            title="Assign to person"
-                                        >
-                                            <Plus size={12} />
-                                        </button>
-                                    )}
-
-                                    {/* Name selector dropdown */}
-                                    {nameSelectorOpen === t.id && (
-                                        <div
-                                            onClick={(e) => e.stopPropagation()}
-                                            style={{
-                                                position: 'absolute',
-                                                top: '100%',
-                                                right: 0,
-                                                zIndex: 100,
-                                                background: 'var(--bg-secondary)',
-                                                border: '1px solid var(--border-color)',
-                                                borderRadius: '8px',
-                                                padding: '8px',
-                                                minWidth: '180px',
-                                                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                                            }}
-                                        >
-                                            <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                                                Assign to Person
-                                            </div>
-
-                                            {sortedPeople.length > 0 && (
-                                                <div style={{ marginBottom: '6px' }}>
-                                                    {sortedPeople.map((name, j) => (
-                                                        <div
-                                                            key={j}
-                                                            onClick={() => assignName(t.id, name)}
-                                                            style={{
-                                                                padding: '4px 8px',
-                                                                background: personNames[t.id] === name ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                                                borderRadius: '4px',
-                                                                marginBottom: '2px',
-                                                                cursor: 'pointer',
-                                                                fontSize: '0.75rem',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '6px'
-                                                            }}
-                                                        >
-                                                            <Users size={10} color="var(--accent-primary)" />
-                                                            {name}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            <div style={{ display: 'flex', gap: '4px' }}>
-                                                <input
-                                                    type="text"
-                                                    value={newNameInput}
-                                                    onChange={(e) => setNewNameInput(e.target.value)}
-                                                    placeholder="New name..."
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter' && newNameInput.trim()) {
-                                                            assignName(t.id, newNameInput.trim());
-                                                        }
-                                                        if (e.key === 'Escape') setNameSelectorOpen(null);
-                                                    }}
-                                                    style={{
-                                                        flex: 1,
-                                                        padding: '4px 8px',
-                                                        background: 'rgba(255, 255, 255, 0.1)',
-                                                        border: '1px solid var(--border-color)',
-                                                        borderRadius: '4px',
-                                                        color: 'white',
-                                                        fontSize: '0.75rem'
-                                                    }}
-                                                />
-                                                <button
-                                                    onClick={() => newNameInput.trim() && assignName(t.id, newNameInput.trim())}
-                                                    disabled={!newNameInput.trim()}
-                                                    style={{
-                                                        padding: '4px 8px',
-                                                        background: newNameInput.trim() ? 'var(--accent-success)' : 'rgba(255, 255, 255, 0.1)',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        cursor: newNameInput.trim() ? 'pointer' : 'default',
-                                                        color: 'white'
-                                                    }}
-                                                >
-                                                    <Check size={12} />
-                                                </button>
-                                            </div>
-
-                                            {personNames[t.id] && (
-                                                <button
-                                                    onClick={() => removeName(t.id)}
-                                                    style={{
-                                                        marginTop: '6px',
-                                                        padding: '2px 6px',
-                                                        background: 'none',
-                                                        border: 'none',
-                                                        color: 'var(--accent-danger)',
-                                                        fontSize: '0.65rem',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px'
-                                                    }}
-                                                >
-                                                    <X size={10} /> Remove
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </td>
-                                <td style={{ padding: '4px' }}>
-                                    <button
-                                        onClick={() => !isRecurring(t) && addToRecurring(t)}
-                                        title={isRecurring(t) ? "Already in Recurring" : "Add Single to Recurring"}
-                                        style={{
-                                            padding: '4px 6px',
-                                            background: isRecurring(t)
-                                                ? 'rgba(34, 197, 94, 0.3)'
-                                                : 'rgba(99, 102, 241, 0.2)',
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            color: isRecurring(t)
-                                                ? 'var(--accent-success)'
-                                                : 'var(--accent-primary)',
-                                            cursor: isRecurring(t) ? 'default' : 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '2px',
-                                            fontSize: '0.65rem',
-                                            opacity: isRecurring(t) ? 1 : 0.7
-                                        }}
-                                    >
-                                        <RefreshCw size={10} />
-                                        {isRecurring(t) && <Check size={8} />}
-                                    </button>
-                                    {!isRecurring(t) && countMatching(t) > 1 && (
-                                        <button
-                                            onClick={() => addAllMatchingToRecurring(t)}
-                                            title={`Add all ${countMatching(t)} matching transactions`}
-                                            style={{
-                                                padding: '4px 6px',
-                                                background: 'rgba(249, 115, 22, 0.2)',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                color: 'var(--accent-warning)',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '2px',
-                                                fontSize: '0.65rem'
-                                            }}
-                                        >
-                                            <Plus size={10} />
-                                            <span style={{ fontWeight: 600 }}>{countMatching(t)}</span>
-                                        </button>
-                                    )}
-                                </td>
-                            </tr>
+                            <TransactionRow
+                                key={t.id}
+                                transaction={t}
+                                isExiting={exitingIds.has(t.id)}
+                                globalRenames={globalRenames}
+                                personName={personNames[t.id]}
+                                people={sortedPeople}
+                                onAssignPerson={(name) => assignName(t.id, name)}
+                                onRemovePerson={() => removeName(t.id)}
+                                onCategoryChange={(cat) => handleCategoryChange(t, cat)}
+                                onAddToRecurring={() => addToRecurring(t)}
+                                onAddAllRecurring={() => addAllMatchingToRecurring(t)}
+                                isRecurring={isRecurring(t)}
+                                matchCount={countMatching(t)}
+                                chargeAssignment={chargeAssignments[t.id]}
+                            />
                         ))}
                     </tbody>
                 </table>
@@ -836,7 +505,7 @@ export default function TransactionTable({ showToast }) {
                 padding: '16px',
                 background: typeFilter === 'income' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)',
                 borderRadius: '8px',
-                border: `1px solid ${typeFilter === 'income' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(99, 102, 241, 0.3)'}`
+                border: `1px solid ${typeFilter === 'income' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(99, 102, 241, 0.3)'} `
             }}>
                 <div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
@@ -844,10 +513,10 @@ export default function TransactionTable({ showToast }) {
                     </div>
                     <div style={{ fontSize: '1.25rem', fontWeight: '700', color: typeFilter === 'income' ? 'var(--accent-success)' : 'var(--accent-primary)' }}>
                         {typeFilter === 'income'
-                            ? `+$${totals.totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            ? `+ $${totals.totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
                             : typeFilter === 'spending'
-                                ? `-$${totals.totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                : `$${(totals.totalCredit - totals.totalDebit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                ? `- $${totals.totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
+                                : `$${(totals.totalCredit - totals.totalDebit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
                         }
                     </div>
                 </div>
