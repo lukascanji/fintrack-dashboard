@@ -100,8 +100,7 @@ export function detectSubscriptions(transactions) {
             else if (avgInterval >= 20 && avgInterval <= 45) frequency = 'Monthly';
             else if (avgInterval >= 75 && avgInterval <= 110) frequency = 'Quarterly';
             else if (avgInterval >= 340 && avgInterval <= 400) frequency = 'Yearly';
-
-            if (!frequency) return;
+            else frequency = 'Frequent'; // Fallback for irregular patterns - still surface in Pending
 
             // Apply frequency-specific minimum occurrences
             // Yearly only needs 2, others need 4
@@ -132,6 +131,7 @@ export function detectSubscriptions(transactions) {
             else if (frequency === 'Monthly') nextDate.setMonth(nextDate.getMonth() + 1);
             else if (frequency === 'Quarterly') nextDate.setMonth(nextDate.getMonth() + 3);
             else if (frequency === 'Yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
+            else if (frequency === 'Frequent') nextDate.setDate(nextDate.getDate() + Math.round(avgInterval));
 
             // Display name includes amount hint if umbrella
             const displayMerchant = amountClusters.length > 1

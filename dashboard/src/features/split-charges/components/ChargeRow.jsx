@@ -5,6 +5,7 @@ export default function ChargeRow({
     charge,
     subscription,
     otherSubscriptions,
+    getEffectiveName,
     currentAssignment,
     isShowingNewInput,
     newSubName,
@@ -114,12 +115,12 @@ export default function ChargeRow({
                         }}
                     >
                         <option value={subscription.merchantKey}>
-                            Keep with {subscription.displayName || subscription.merchant}
+                            Keep with {getEffectiveName ? getEffectiveName(subscription) : (subscription.displayName || subscription.merchant)}
                         </option>
                         <optgroup label="Move to existing">
                             {otherSubscriptions.map(s => (
                                 <option key={s.merchantKey} value={s.merchantKey}>
-                                    {s.displayName || s.merchant}
+                                    {getEffectiveName ? getEffectiveName(s) : (s.displayName || s.merchant)}
                                 </option>
                             ))}
                         </optgroup>

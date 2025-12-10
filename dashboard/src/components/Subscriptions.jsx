@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { GitMerge, X } from 'lucide-react';
+import { GitMerge, X, Search } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 import SplitChargesModal from './SplitChargesModal';
 import { getTransactionId } from '../utils/transactionId';
@@ -66,6 +66,11 @@ export default function Subscriptions() {
     const [showMergePrompt, setShowMergePrompt] = useState(false);
     const [mergedName, setMergedName] = useState('');
     const [mergeTarget, setMergeTarget] = useState('new'); // 'new' or an existing merchantKey
+
+    // Search and filter state
+    const [search, setSearch] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'Active', 'Expired'
 
     // Aliases
     const approved = approvedItems;
@@ -567,9 +572,55 @@ export default function Subscriptions() {
         .filter(s => s.frequency === 'Monthly' || s.frequency === 'Manual')
         .reduce((sum, s) => sum + s.latestAmount, 0);
 
+    // Get unique categories for filter dropdown
+    const availableCategories = useMemo(() => {
+        const cats = new Set();
+        allApprovedItems.forEach(item => {
+            const effectiveCategory = categoryOverrides[item.merchantKey] || item.category || 'OTHER';
+            cats.add(effectiveCategory);
+        });
+        return [...cats].sort();
+    }, [allApprovedItems, categoryOverrides]);
+
+    // Apply search and filters to approved items
+    const filteredApprovedItems = useMemo(() => {
+        let filtered = allApprovedItems;
+
+        // Apply search
+        if (search) {
+            const searchLower = search.toLowerCase();
+            filtered = filtered.filter(item => {
+                // Check merchant name
+                if (item.merchant?.toLowerCase().includes(searchLower)) return true;
+                if (item.baseMerchant?.toLowerCase().includes(searchLower)) return true;
+
+                // Check effective name (from renames, merges)
+                const effectiveName = getEffectiveName(item);
+                if (effectiveName?.toLowerCase().includes(searchLower)) return true;
+
+                return false;
+            });
+        }
+
+        // Apply category filter
+        if (categoryFilter !== 'all') {
+            filtered = filtered.filter(item => {
+                const effectiveCategory = categoryOverrides[item.merchantKey] || item.category || 'OTHER';
+                return effectiveCategory === categoryFilter;
+            });
+        }
+
+        // Apply status filter
+        if (statusFilter !== 'all') {
+            filtered = filtered.filter(item => item.status === statusFilter);
+        }
+
+        return filtered;
+    }, [allApprovedItems, search, categoryFilter, statusFilter, categoryOverrides, getEffectiveName]);
+
     const groupedByCategory = (() => {
         const groups = {};
-        allApprovedItems.forEach(item => {
+        filteredApprovedItems.forEach(item => {
             const effectiveCategory = categoryOverrides[item.merchantKey] || item.category || 'OTHER';
             if (!groups[effectiveCategory]) groups[effectiveCategory] = [];
             groups[effectiveCategory].push({ ...item, effectiveCategory });
@@ -590,6 +641,115 @@ export default function Subscriptions() {
                     onClearMergeSelection={() => setMergeSelected([])}
                     hasApprovedItems={allApprovedItems.length > 0}
                 />
+            </div>
+
+            {/* Search and Filter Bar */}
+            <div style={{
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                flexWrap: 'wrap'
+            }}>
+                {/* Search Input */}
+                <div style={{
+                    position: 'relative',
+                    flex: '1 1 200px',
+                    maxWidth: '300px'
+                }}>
+                    <Search
+                        size={16}
+                        style={{
+                            position: 'absolute',
+                            left: '12px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: 'var(--text-secondary)'
+                        }}
+                    />
+                    <input
+                        type="text"
+                        placeholder="Search recurring..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '10px 12px 10px 36px',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '8px',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.9rem'
+                        }}
+                    />
+                    {search && (
+                        <button
+                            onClick={() => setSearch('')}
+                            style={{
+                                position: 'absolute',
+                                right: '8px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-secondary)',
+                                cursor: 'pointer',
+                                padding: '4px'
+                            }}
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
+
+                {/* Category Filter */}
+                <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <option value="all">All Categories</option>
+                    {availableCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                </select>
+
+                {/* Status Filter */}
+                <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <option value="all">All Status</option>
+                    <option value="Active">Active</option>
+                    <option value="Expired">Expired</option>
+                </select>
+
+                {/* Results Count */}
+                {(search || categoryFilter !== 'all' || statusFilter !== 'all') && (
+                    <span style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary)',
+                        marginLeft: 'auto'
+                    }}>
+                        {filteredApprovedItems.length} of {allApprovedItems.length} items
+                    </span>
+                )}
             </div>
 
             <div style={{ display: 'flex', gap: '24px' }}>
@@ -630,6 +790,8 @@ export default function Subscriptions() {
                     allSubscriptions={allApprovedItems}
                     isOpen={splitChargesModalOpen}
                     onClose={() => setSplitChargesModalOpen(false)}
+                    globalRenames={globalRenames}
+                    mergedSubscriptions={mergedSubscriptions}
                     onCreateNewSubscription={handleCreateNewFromSplit}
                     onSave={(newAssignments, createdSubs) => {
                         // Update charge assignments

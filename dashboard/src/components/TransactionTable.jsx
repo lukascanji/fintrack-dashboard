@@ -54,12 +54,24 @@ export default function TransactionTable({ showToast }) {
 
     // Check if a transaction is part of an approved recurring item
     const isRecurring = (txn) => {
-        // Check specific assignment (splits/manual)
-        if (chargeAssignments[txn.id]) return true;
+        const txnId = getTransactionId(txn);
 
-        // Check base merchant key
+        // Check specific assignment (splits/manual) - use getTransactionId for consistent key
+        if (chargeAssignments[txnId]) return true;
+
+        // Check base merchant key against approved list
         const merchantKey = getMerchantKey(txn.description);
-        return approvedRecurring.includes(merchantKey);
+        if (approvedRecurring.includes(merchantKey)) return true;
+
+        // Check amount-suffixed key (for umbrella merchants with same amount)
+        const amount = Math.abs(txn.debit || txn.credit || txn.amount || 0).toFixed(2);
+        const amountKey = `${merchantKey}-${amount}`;
+        if (approvedRecurring.includes(amountKey)) return true;
+
+        // Check if merchant key exists in manualRecurring (split children)
+        if (manualRecurring.some(m => m.merchantKey === merchantKey || m.merchantKey === amountKey)) return true;
+
+        return false;
     };
 
     // Load recent people usage for ordering
@@ -245,18 +257,7 @@ export default function TransactionTable({ showToast }) {
         }
     };
 
-    // Count matching transactions for a given transaction
-    const countMatching = (txn) => {
-        const merchantKey = getMerchantKey(txn.description);
-        const amount = txn.debit || txn.credit || txn.amount || 0;
-        return transactions.filter(t => {
-            const tKey = getMerchantKey(t.description);
-            const tAmount = t.debit || t.credit || t.amount || 0;
-            return tKey === merchantKey &&
-                (tAmount === 0 || amount === 0 ? tAmount === amount :
-                    Math.abs(tAmount - amount) / Math.max(tAmount, amount) < 0.03);
-        }).length;
-    };
+
 
     const DATE_PRESETS = [
         { label: 'All Time', value: 'all' },
@@ -322,10 +323,32 @@ export default function TransactionTable({ showToast }) {
 
         if (search) {
             const searchLower = search.toLowerCase();
-            filtered = filtered.filter(t =>
-                t.description.toLowerCase().includes(searchLower) ||
-                t.merchant.toLowerCase().includes(searchLower)
-            );
+            filtered = filtered.filter(t => {
+                // Check original description and merchant
+                if (t.description.toLowerCase().includes(searchLower)) return true;
+                if (t.merchant.toLowerCase().includes(searchLower)) return true;
+
+                // Also check effective name (from renames, splits, merges)
+                const txnId = getTransactionId(t);
+                let effectiveName = null;
+
+                // Priority 1: Charge assignment redirect
+                if (chargeAssignments[txnId]) {
+                    effectiveName = effectiveNames[chargeAssignments[txnId]];
+                }
+
+                // Priority 2: Try merchantKey with amount suffix
+                if (!effectiveName) {
+                    const baseKey = getMerchantKey(t.description);
+                    const amount = Math.abs(t.debit || t.credit || t.amount || 0).toFixed(2);
+                    const amountKey = `${baseKey}-${amount}`;
+                    effectiveName = effectiveNames[amountKey] || effectiveNames[baseKey];
+                }
+
+                if (effectiveName && effectiveName.toLowerCase().includes(searchLower)) return true;
+
+                return false;
+            });
         }
 
         if (categoryFilter !== 'all') {
@@ -358,7 +381,7 @@ export default function TransactionTable({ showToast }) {
             'Categories in results:', [...new Set(filtered.map(t => t.category))]);
 
         return filtered;
-    }, [transactions, search, sortField, sortDir, categoryFilter, accountFilter, typeFilter, dateRange, exitingIds]);
+    }, [transactions, search, sortField, sortDir, categoryFilter, accountFilter, typeFilter, dateRange, exitingIds, effectiveNames, chargeAssignments]);
 
     // Calculate totals for filtered transactions
     const totals = useMemo(() => {
@@ -518,9 +541,7 @@ export default function TransactionTable({ showToast }) {
                                 onRemovePerson={() => removeName(t.id)}
                                 onCategoryChange={(cat) => handleCategoryChange(t, cat)}
                                 onAddToRecurring={() => addToRecurring(t)}
-                                onAddAllRecurring={() => addAllMatchingToRecurring(t)}
                                 isRecurring={isRecurring(t)}
-                                matchCount={countMatching(t)}
                                 chargeAssignment={chargeAssignments[getTransactionId(t)]}
                                 effectiveName={(() => {
                                     const txnId = getTransactionId(t);

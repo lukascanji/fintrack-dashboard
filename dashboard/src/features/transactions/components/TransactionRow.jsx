@@ -13,11 +13,9 @@ export default function TransactionRow({
     onRemovePerson,
     onCategoryChange,
     onAddToRecurring,
-    onAddAllRecurring,
     isRecurring,
-    matchCount,
     chargeAssignment,
-    effectiveName // New prop
+    effectiveName
 }) {
     const [categoryEditOpen, setCategoryEditOpen] = useState(false);
     const [nameSelectorOpen, setNameSelectorOpen] = useState(false);
@@ -334,27 +332,6 @@ export default function TransactionRow({
                     <RefreshCw size={10} />
                     {isRecurring && <Check size={8} />}
                 </button>
-                {!isRecurring && matchCount > 1 && (
-                    <button
-                        onClick={onAddAllRecurring}
-                        title={`Add all ${matchCount} matching transactions`}
-                        style={{
-                            padding: '4px 6px',
-                            background: 'rgba(249, 115, 22, 0.2)',
-                            border: 'none',
-                            borderRadius: '4px',
-                            color: 'var(--accent-warning)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '2px',
-                            fontSize: '0.65rem'
-                        }}
-                    >
-                        <Plus size={10} />
-                        <span style={{ fontWeight: 600 }}>{matchCount}</span>
-                    </button>
-                )}
             </td>
         </tr>
     );
