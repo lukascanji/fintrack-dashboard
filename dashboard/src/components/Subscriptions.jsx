@@ -63,6 +63,7 @@ export default function Subscriptions() {
     const [mergeSelected, setMergeSelected] = useState([]);
     const [showMergePrompt, setShowMergePrompt] = useState(false);
     const [mergedName, setMergedName] = useState('');
+    const [mergeTarget, setMergeTarget] = useState('new'); // 'new' or an existing merchantKey
 
     // Aliases
     const approved = approvedItems;
@@ -106,32 +107,79 @@ export default function Subscriptions() {
     };
 
     const executeMerge = () => {
-        if (mergeSelected.length < 2 || !mergedName.trim()) return;
-        const newKey = `merged_${mergedName.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
-        const toMerge = allApprovedItems.filter(s => mergeSelected.includes(s.merchantKey));
-        const priceHistory = toMerge.map(s => ({
-            amount: s.latestAmount,
-            merchantKey: s.merchantKey,
-            originalMerchant: s.merchant
-        }));
-        const merged = {
-            ...mergedSubscriptions,
-            [newKey]: {
-                displayName: mergedName.trim(),
-                mergedFrom: mergeSelected,
-                priceHistory: priceHistory,
-                createdAt: new Date().toISOString()
-            }
-        };
-        setMergedSubscriptions(merged);
-        localStorage.setItem(MERGED_SUBSCRIPTIONS_KEY, JSON.stringify(merged));
+        if (mergeSelected.length < 2) return;
 
-        // Assign all transactions from merged items to the new key
+        const toMerge = allApprovedItems.filter(s => mergeSelected.includes(s.merchantKey));
+
+        // Determine target key - either existing item or new merged item
+        let targetKey;
+        let targetDisplayName;
+
+        if (mergeTarget === 'new') {
+            // Creating new merged subscription
+            if (!mergedName.trim()) return;
+            targetKey = `merged_${mergedName.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
+            targetDisplayName = mergedName.trim();
+
+            const priceHistory = toMerge.map(s => ({
+                amount: s.latestAmount,
+                merchantKey: s.merchantKey,
+                originalMerchant: s.merchant
+            }));
+
+            const merged = {
+                ...mergedSubscriptions,
+                [targetKey]: {
+                    displayName: targetDisplayName,
+                    mergedFrom: mergeSelected,
+                    priceHistory: priceHistory,
+                    createdAt: new Date().toISOString()
+                }
+            };
+            setMergedSubscriptions(merged);
+            localStorage.setItem(MERGED_SUBSCRIPTIONS_KEY, JSON.stringify(merged));
+        } else {
+            // Merging into existing recurring item
+            targetKey = mergeTarget;
+            const existingItem = allApprovedItems.find(s => s.merchantKey === targetKey);
+            targetDisplayName = existingItem?.merchant || targetKey;
+
+            // Build price history from items being merged INTO the target
+            const additionalPriceHistory = toMerge
+                .filter(s => s.merchantKey !== targetKey)
+                .map(s => ({
+                    amount: s.latestAmount,
+                    merchantKey: s.merchantKey,
+                    originalMerchant: s.merchant
+                }));
+
+            // Always create/update a mergedSubscriptions entry for tracking and undo
+            const existingMerge = mergedSubscriptions[targetKey] || {
+                displayName: targetDisplayName,
+                mergedFrom: [],
+                priceHistory: [],
+                createdAt: new Date().toISOString()
+            };
+
+            const merged = {
+                ...mergedSubscriptions,
+                [targetKey]: {
+                    ...existingMerge,
+                    displayName: targetDisplayName,
+                    mergedFrom: [...new Set([...(existingMerge.mergedFrom || []), ...mergeSelected.filter(k => k !== targetKey)])],
+                    priceHistory: [...(existingMerge.priceHistory || []), ...additionalPriceHistory]
+                }
+            };
+            setMergedSubscriptions(merged);
+            localStorage.setItem(MERGED_SUBSCRIPTIONS_KEY, JSON.stringify(merged));
+        }
+
+        // Assign all transactions from merged items to the target key
         const newAssignments = {};
         toMerge.forEach(sub => {
-            if (sub.allTransactions) {
+            if (sub.merchantKey !== targetKey && sub.allTransactions) {
                 sub.allTransactions.forEach(t => {
-                    newAssignments[getTransactionId(t)] = newKey;
+                    newAssignments[getTransactionId(t)] = targetKey;
                 });
             }
         });
@@ -145,6 +193,7 @@ export default function Subscriptions() {
         setMergeSelected([]);
         setShowMergePrompt(false);
         setMergedName('');
+        setMergeTarget('new');
     };
 
     const openSplitModal = (sub) => {
@@ -203,6 +252,8 @@ export default function Subscriptions() {
             const thisSubTransactionIds = new Set(
                 (item.allTransactions || []).map(t => getTransactionId(t))
             );
+
+            // Find transactions reassigned AWAY from this item
             const reassignedFromThisSub = new Set(
                 Object.entries(chargeAssignments)
                     .filter(([txnId, targetKey]) =>
@@ -213,29 +264,27 @@ export default function Subscriptions() {
                     .map(([txnId]) => txnId)
             );
 
-            if (reassignedFromThisSub.size === 0) {
-                // Calculate Status
-                let gracePeriod = 20; // Default 20 days
-                if (item.frequency === 'Yearly' || item.frequency === 'Quarterly') gracePeriod = 45;
+            // Find transactions assigned TO this item from other sources
+            const incomingAssignedIds = new Set(assignmentsByTarget[item.merchantKey] || []);
+            const incomingTransactions = transactions.filter(t => {
+                const txnId = getTransactionId(t);
+                // Include if assigned to this item AND not already in original transactions
+                return incomingAssignedIds.has(txnId) && !thisSubTransactionIds.has(txnId);
+            });
 
-                const expiryThreshold = new Date(item.nextDate);
-                expiryThreshold.setDate(expiryThreshold.getDate() + gracePeriod);
-                const status = datasetEndDate > expiryThreshold ? 'Expired' : 'Active';
-
-                return { ...item, status };
-            }
-
+            // Combine: original transactions (minus reassigned) + incoming assigned
             const filteredTransactions = (item.allTransactions || [])
                 .filter(t => !reassignedFromThisSub.has(getTransactionId(t)));
 
-            if (filteredTransactions.length === 0 && item.allTransactions?.length > 0) return null;
+            const combinedTransactions = [...filteredTransactions, ...incomingTransactions];
 
-            const amounts = filteredTransactions.map(t => t.amount || t.debit || t.credit || 0);
+            if (combinedTransactions.length === 0 && item.allTransactions?.length > 0) return null;
+
+            const amounts = combinedTransactions.map(t => t.amount || t.debit || t.credit || 0);
             const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : 0;
             const totalSpent = amounts.reduce((a, b) => a + b, 0);
 
-            // Recalculate nextDate if transactions changed (simplified for now, assuming date logic in utils holds)
-            // But we need to calc status
+            // Calculate status
             let gracePeriod = 20;
             if (item.frequency === 'Yearly' || item.frequency === 'Quarterly') gracePeriod = 45;
             const expiryThreshold = new Date(item.nextDate);
@@ -244,8 +293,8 @@ export default function Subscriptions() {
 
             return {
                 ...item,
-                allTransactions: filteredTransactions,
-                count: filteredTransactions.length,
+                allTransactions: combinedTransactions,
+                count: combinedTransactions.length,
                 latestAmount,
                 totalSpent,
                 status
@@ -588,26 +637,87 @@ export default function Subscriptions() {
                                 <span>${totalToMerge.toFixed(2)}</span>
                             </div>
                         </div>
+
+                        {/* Merge Target Selection */}
                         <div style={{ marginBottom: '16px' }}>
-                            <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>New Name</label>
-                            <input
-                                type="text"
-                                value={mergedName}
-                                onChange={(e) => setMergedName(e.target.value)}
-                                placeholder="e.g. Streaming Bundle"
+                            <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '8px', fontWeight: '500' }}>Merge into:</label>
+                            <select
+                                value={mergeTarget}
+                                onChange={(e) => {
+                                    setMergeTarget(e.target.value);
+                                    if (e.target.value !== 'new') {
+                                        // If selecting existing item, pre-fill name with that item's name
+                                        const existing = allApprovedItems.find(s => s.merchantKey === e.target.value);
+                                        if (existing) setMergedName(existing.merchant);
+                                    } else {
+                                        setMergedName('');
+                                    }
+                                }}
                                 style={{
                                     width: '100%',
-                                    padding: '8px',
+                                    padding: '10px',
                                     background: 'rgba(0, 0, 0, 0.3)',
                                     border: '1px solid var(--border-color)',
-                                    borderRadius: '4px',
-                                    color: 'var(--text-primary)'
+                                    borderRadius: '6px',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '0.85rem',
+                                    cursor: 'pointer'
                                 }}
-                            />
+                            >
+                                <option value="new">+ Create new subscription</option>
+                                <optgroup label="Existing subscriptions">
+                                    {allApprovedItems
+                                        .filter(s => !mergeSelected.includes(s.merchantKey))
+                                        .map(s => (
+                                            <option key={s.merchantKey} value={s.merchantKey}>
+                                                {s.merchant} (${s.latestAmount.toFixed(2)}/mo)
+                                            </option>
+                                        ))
+                                    }
+                                </optgroup>
+                                {mergeSelected.length > 0 && (
+                                    <optgroup label="Selected items (merge into)">
+                                        {allApprovedItems
+                                            .filter(s => mergeSelected.includes(s.merchantKey))
+                                            .map(s => (
+                                                <option key={s.merchantKey} value={s.merchantKey}>
+                                                    {s.merchant} (${s.latestAmount.toFixed(2)}/mo)
+                                                </option>
+                                            ))
+                                        }
+                                    </optgroup>
+                                )}
+                            </select>
                         </div>
+
+                        {/* New Name Input - only show when creating new */}
+                        {mergeTarget === 'new' && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '4px' }}>New Name</label>
+                                <input
+                                    type="text"
+                                    value={mergedName}
+                                    onChange={(e) => setMergedName(e.target.value)}
+                                    placeholder="e.g. Streaming Bundle"
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px',
+                                        background: 'rgba(0, 0, 0, 0.3)',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '4px',
+                                        color: 'var(--text-primary)'
+                                    }}
+                                />
+                            </div>
+                        )}
+
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                             <button
-                                onClick={() => setShowMergePrompt(false)}
+                                onClick={() => {
+                                    setShowMergePrompt(false);
+                                    setMergeTarget('new');
+                                    setMergedName('');
+                                }}
                                 style={{
                                     padding: '8px 16px',
                                     background: 'transparent',
@@ -621,14 +731,14 @@ export default function Subscriptions() {
                             </button>
                             <button
                                 onClick={executeMerge}
-                                disabled={!mergedName.trim()}
+                                disabled={mergeTarget === 'new' && !mergedName.trim()}
                                 style={{
                                     padding: '8px 16px',
-                                    background: mergedName.trim() ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.1)',
+                                    background: (mergeTarget !== 'new' || mergedName.trim()) ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.1)',
                                     border: 'none',
                                     borderRadius: '8px',
-                                    color: mergedName.trim() ? 'white' : 'var(--text-secondary)',
-                                    cursor: mergedName.trim() ? 'pointer' : 'not-allowed',
+                                    color: (mergeTarget !== 'new' || mergedName.trim()) ? 'white' : 'var(--text-secondary)',
+                                    cursor: (mergeTarget !== 'new' || mergedName.trim()) ? 'pointer' : 'not-allowed',
                                     fontWeight: 500
                                 }}
                             >

@@ -17,7 +17,8 @@ export default function Rules() {
         mergedSubscriptions, setMergedSubscriptions,
         merchantSplits, setMerchantSplits,
         sharedSubscriptions, setSharedSubscriptions,
-        emails, setEmails
+        emails, setEmails,
+        chargeAssignments, setChargeAssignments
     } = useTransactions();
 
     // Expanded sections state
@@ -27,7 +28,8 @@ export default function Rules() {
         merges: true,
         splits: true,
         shares: true,
-        emails: true
+        emails: true,
+        assignments: false
     });
 
     const toggleSection = (section) => {
@@ -55,10 +57,25 @@ export default function Rules() {
     };
 
     const deleteMerge = (key) => {
+        // Remove the merge record
         setMergedSubscriptions(prev => {
             const updated = { ...prev };
             delete updated[key];
             return updated;
+        });
+
+        // Clear all charge assignments that point to this merged target
+        // This returns transactions to their original detected subscriptions
+        setChargeAssignments(prev => {
+            const updated = { ...prev };
+            let hasChanges = false;
+            Object.keys(updated).forEach(txnId => {
+                if (updated[txnId] === key) {
+                    delete updated[txnId];
+                    hasChanges = true;
+                }
+            });
+            return hasChanges ? updated : prev;
         });
     };
 
@@ -93,7 +110,29 @@ export default function Rules() {
     const splitsCount = Object.keys(merchantSplits).length;
     const sharesCount = Object.keys(sharedSubscriptions).length;
     const emailsCount = Object.keys(emails).length;
+    const assignmentsCount = Object.keys(chargeAssignments).length;
     const totalRules = renamesCount + categoriesCount + mergesCount + splitsCount + sharesCount + emailsCount;
+
+    // Group assignments by target for better display
+    const assignmentsByTarget = {};
+    Object.entries(chargeAssignments).forEach(([txnId, targetKey]) => {
+        if (!assignmentsByTarget[targetKey]) {
+            assignmentsByTarget[targetKey] = [];
+        }
+        assignmentsByTarget[targetKey].push(txnId);
+    });
+
+    const clearAssignmentsForTarget = (targetKey) => {
+        setChargeAssignments(prev => {
+            const updated = { ...prev };
+            Object.keys(updated).forEach(txnId => {
+                if (updated[txnId] === targetKey) {
+                    delete updated[txnId];
+                }
+            });
+            return updated;
+        });
+    };
 
     return (
         <div className={styles.container}>
@@ -228,7 +267,7 @@ export default function Rules() {
                                         <div className={styles.ruleContent}>
                                             <span className={styles.ruleNew}>{merge.displayName || key}</span>
                                             <span className={styles.mergeDetails}>
-                                                ({merge.sourceKeys?.length || 0} items merged)
+                                                ({(merge.mergedFrom?.length || 0) + 1} items in this bundle)
                                             </span>
                                         </div>
                                         <button
@@ -361,6 +400,48 @@ export default function Rules() {
                                             className={styles.deleteBtn}
                                             onClick={() => deleteEmail(key)}
                                             title="Delete email"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Charge Assignments Section (Debugging) */}
+            <div className={styles.section}>
+                <div
+                    className={styles.sectionHeader}
+                    onClick={() => toggleSection('assignments')}
+                >
+                    <div className={styles.sectionTitle}>
+                        <Layers size={16} />
+                        Charge Assignments
+                        <span className={styles.badge}>{assignmentsCount}</span>
+                    </div>
+                    {expandedSections.assignments ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </div>
+                {expandedSections.assignments && (
+                    <div className={styles.sectionContent}>
+                        {Object.keys(assignmentsByTarget).length === 0 ? (
+                            <div className={styles.emptyMessage}>No charge assignments yet.</div>
+                        ) : (
+                            <div className={styles.rulesList}>
+                                {Object.entries(assignmentsByTarget).map(([targetKey, txnIds]) => (
+                                    <div key={targetKey} className={styles.ruleItem}>
+                                        <div className={styles.ruleContent}>
+                                            <span className={styles.ruleNew}>{targetKey}</span>
+                                            <span className={styles.mergeDetails}>
+                                                ({txnIds.length} transaction{txnIds.length !== 1 ? 's' : ''} assigned)
+                                            </span>
+                                        </div>
+                                        <button
+                                            className={styles.deleteBtn}
+                                            onClick={() => clearAssignmentsForTarget(targetKey)}
+                                            title="Clear these assignments"
                                         >
                                             <Trash2 size={14} />
                                         </button>

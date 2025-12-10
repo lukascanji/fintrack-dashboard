@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
     RefreshCw, Check, X, Pencil, ChevronDown, ChevronUp,
-    Users, Scissors, Mail, Trash2, Calendar, Activity, DollarSign, TrendingUp, Clock, RotateCcw, Layers
+    Users, Scissors, Mail, Trash2, Calendar, Activity, DollarSign, TrendingUp, Clock, RotateCcw, Layers, Unlink
 } from 'lucide-react';
 import { useTransactions } from '../../../context/TransactionContext';
 import { ALL_CATEGORIES } from '../../../utils/constants';
@@ -28,6 +28,7 @@ export default function RecurringItem({
         peopleList,
         manualRecurring, setManualRecurring,
         setChargeAssignments,
+        mergedSubscriptions, setMergedSubscriptions,
         approvedItems, setApprovedItems, setDeniedItems // For removing manual items
     } = useTransactions();
 
@@ -172,6 +173,36 @@ export default function RecurringItem({
                 localStorage.setItem('fintrack_charge_assignments', JSON.stringify(updated));
             }
             return changed ? updated : prev;
+        });
+    };
+
+    // Unmerge Handler - breaks apart merged item into original constituents
+    const handleUnmerge = (e) => {
+        e.stopPropagation();
+
+        // 1. Remove the merge record
+        setMergedSubscriptions(prev => {
+            const updated = { ...prev };
+            delete updated[sub.merchantKey];
+            localStorage.setItem('fintrack_merged_subscriptions', JSON.stringify(updated));
+            return updated;
+        });
+
+        // 2. Clear all charge assignments pointing to this merged key
+        // This returns transactions to their original detected subscriptions
+        setChargeAssignments(prev => {
+            const updated = { ...prev };
+            let hasChanges = false;
+            Object.keys(updated).forEach(txnId => {
+                if (updated[txnId] === sub.merchantKey) {
+                    delete updated[txnId];
+                    hasChanges = true;
+                }
+            });
+            if (hasChanges) {
+                localStorage.setItem('fintrack_charge_assignments', JSON.stringify(updated));
+            }
+            return hasChanges ? updated : prev;
         });
     };
 
@@ -516,7 +547,7 @@ export default function RecurringItem({
                             </Dropdown>
 
                             {/* Remove button for manual items */}
-                            {sub.isManual && (
+                            {sub.isManual && !sub.isMerged && (
                                 <button
                                     onClick={removeManualItem}
                                     title="Remove from recurring"
@@ -524,6 +555,24 @@ export default function RecurringItem({
                                     style={{ borderRadius: '10px', padding: '2px 6px' }}
                                 >
                                     <Trash2 size={10} />
+                                </button>
+                            )}
+
+                            {/* Unmerge button for merged items */}
+                            {sub.isMerged && (
+                                <button
+                                    onClick={handleUnmerge}
+                                    title="Unmerge - separate back into original items"
+                                    className={`${styles.actionButton}`}
+                                    style={{
+                                        borderRadius: '10px',
+                                        padding: '2px 6px',
+                                        backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                                        border: '1px solid rgba(168, 85, 247, 0.4)',
+                                        color: '#d8b4fe'
+                                    }}
+                                >
+                                    <Unlink size={10} />
                                 </button>
                             )}
 
