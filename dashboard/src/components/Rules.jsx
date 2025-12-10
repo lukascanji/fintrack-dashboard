@@ -15,7 +15,7 @@ export default function Rules() {
         globalRenames, setGlobalRenames,
         categoryOverrides, setCategoryOverrides,
         mergedSubscriptions, setMergedSubscriptions,
-        merchantSplits, setMerchantSplits,
+        splitSubscriptions, setSplitSubscriptions,
         sharedSubscriptions, setSharedSubscriptions,
         emails, setEmails,
         chargeAssignments, setChargeAssignments
@@ -80,10 +80,31 @@ export default function Rules() {
     };
 
     const deleteSplit = (key) => {
-        setMerchantSplits(prev => {
+        // Remove the split record
+        setSplitSubscriptions(prev => {
             const updated = { ...prev };
             delete updated[key];
             return updated;
+        });
+
+        // Also clear charge assignments that came from this split
+        setChargeAssignments(prev => {
+            const updated = { ...prev };
+            let hasChanges = false;
+            // Clear assignments where source was the split subscription
+            // The assignments point TO the split targets, so we need to get those
+            const splitRecord = splitSubscriptions[key];
+            if (splitRecord && splitRecord.splitTo) {
+                splitRecord.splitTo.forEach(targetKey => {
+                    Object.keys(updated).forEach(txnId => {
+                        if (updated[txnId] === targetKey) {
+                            delete updated[txnId];
+                            hasChanges = true;
+                        }
+                    });
+                });
+            }
+            return hasChanges ? updated : prev;
         });
     };
 
@@ -107,7 +128,7 @@ export default function Rules() {
     const renamesCount = Object.keys(globalRenames).length;
     const categoriesCount = Object.keys(categoryOverrides).length;
     const mergesCount = Object.keys(mergedSubscriptions).length;
-    const splitsCount = Object.keys(merchantSplits).length;
+    const splitsCount = Object.keys(splitSubscriptions || {}).length;
     const sharesCount = Object.keys(sharedSubscriptions).length;
     const emailsCount = Object.keys(emails).length;
     const assignmentsCount = Object.keys(chargeAssignments).length;
@@ -304,18 +325,18 @@ export default function Rules() {
                             <div className={styles.emptyMessage}>No split items yet.</div>
                         ) : (
                             <div className={styles.rulesList}>
-                                {Object.entries(merchantSplits).map(([key, split]) => (
+                                {Object.entries(splitSubscriptions || {}).map(([key, split]) => (
                                     <div key={key} className={styles.ruleItem}>
                                         <div className={styles.ruleContent}>
-                                            <span className={styles.ruleOriginal}>{key}</span>
+                                            <span className={styles.ruleOriginal}>{split.displayName || key}</span>
                                             <span className={styles.splitDetails}>
-                                                Split into {Array.isArray(split) ? split.length : 1} items
+                                                ({split.transactionCount || 0} charges split to {split.splitTo?.length || 0} targets)
                                             </span>
                                         </div>
                                         <button
                                             className={styles.deleteBtn}
                                             onClick={() => deleteSplit(key)}
-                                            title="Delete split"
+                                            title="Delete split (returns transactions to original)"
                                         >
                                             <Trash2 size={14} />
                                         </button>

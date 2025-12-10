@@ -86,6 +86,13 @@ export function TransactionProvider({ children }) {
         } catch { return {}; }
     });
 
+    const [splitSubscriptions, setSplitSubscriptions] = useState(() => {
+        try {
+            const saved = localStorage.getItem('fintrack_split_subscriptions');
+            return saved ? JSON.parse(saved) : {};
+        } catch { return {}; }
+    });
+
     const [emails, setEmails] = useState(() => {
         try {
             const saved = localStorage.getItem('fintrack_subscription_emails');
@@ -170,6 +177,10 @@ export function TransactionProvider({ children }) {
     useEffect(() => {
         localStorage.setItem('fintrack_merged_subscriptions', JSON.stringify(mergedSubscriptions));
     }, [mergedSubscriptions]);
+
+    useEffect(() => {
+        localStorage.setItem('fintrack_split_subscriptions', JSON.stringify(splitSubscriptions));
+    }, [splitSubscriptions]);
 
     useEffect(() => {
         localStorage.setItem('fintrack_subscription_emails', JSON.stringify(emails));
@@ -314,6 +325,9 @@ export function TransactionProvider({ children }) {
 
         mergedSubscriptions,
         setMergedSubscriptions,
+
+        splitSubscriptions,
+        setSplitSubscriptions,
 
         emails,
         setEmails,

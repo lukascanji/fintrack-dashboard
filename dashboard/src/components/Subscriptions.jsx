@@ -49,6 +49,7 @@ export default function Subscriptions() {
         chargeAssignments, setChargeAssignments,
         merchantSplits, setMerchantSplits,
         mergedSubscriptions, setMergedSubscriptions,
+        splitSubscriptions, setSplitSubscriptions,
         categoryOverrides,
         setGlobalRenames,
         setCustomNames,
@@ -598,8 +599,34 @@ export default function Subscriptions() {
                     isOpen={splitChargesModalOpen}
                     onClose={() => setSplitChargesModalOpen(false)}
                     onCreateNewSubscription={handleCreateNewFromSplit}
-                    onSave={(newAssignments) => {
+                    onSave={(newAssignments, createdSubs) => {
+                        // Update charge assignments
                         setChargeAssignments(prev => ({ ...prev, ...newAssignments }));
+
+                        // Track the split in splitSubscriptions for Rules display
+                        if (Object.keys(newAssignments).length > 0 || (createdSubs && createdSubs.length > 0)) {
+                            const splitKey = subscriptionToSplit.merchantKey;
+                            const splitToTargets = {};
+
+                            // Group assignments by target
+                            Object.entries(newAssignments).forEach(([txnId, targetKey]) => {
+                                if (!splitToTargets[targetKey]) {
+                                    splitToTargets[targetKey] = [];
+                                }
+                                splitToTargets[targetKey].push(txnId);
+                            });
+
+                            setSplitSubscriptions(prev => ({
+                                ...prev,
+                                [splitKey]: {
+                                    displayName: subscriptionToSplit.displayName || subscriptionToSplit.merchant,
+                                    splitTo: Object.keys(splitToTargets),
+                                    createdSubscriptions: (createdSubs || []).map(s => s.merchantKey),
+                                    transactionCount: Object.keys(newAssignments).length,
+                                    createdAt: new Date().toISOString()
+                                }
+                            }));
+                        }
                     }}
                 />
             )}
