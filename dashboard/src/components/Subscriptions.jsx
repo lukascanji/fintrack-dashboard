@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { GitMerge } from 'lucide-react';
+import { GitMerge, X } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 import SplitChargesModal from './SplitChargesModal';
 import { getTransactionId } from '../utils/transactionId';
@@ -249,58 +249,71 @@ export default function Subscriptions() {
             ...Object.keys(mergedSubscriptions || {})
         ]);
 
-        const processedApproved = approvedSubscriptions.map(item => {
-            const thisSubTransactionIds = new Set(
-                (item.allTransactions || []).map(t => getTransactionId(t))
-            );
+        // Collect all merchant keys that were merged INTO another item (these should be hidden)
+        const mergedSourceKeys = new Set();
+        Object.values(mergedSubscriptions || {}).forEach(merge => {
+            if (merge && merge.mergedFrom) {
+                merge.mergedFrom.forEach(key => mergedSourceKeys.add(key));
+            }
+        });
 
-            // Find transactions reassigned AWAY from this item
-            const reassignedFromThisSub = new Set(
-                Object.entries(chargeAssignments)
-                    .filter(([txnId, targetKey]) =>
-                        thisSubTransactionIds.has(txnId) &&
-                        targetKey !== item.merchantKey &&
-                        activeKeys.has(targetKey)
-                    )
-                    .map(([txnId]) => txnId)
-            );
+        const processedApproved = approvedSubscriptions
+            // Exclude items that were merged into another item
+            .filter(item => !mergedSourceKeys.has(item.merchantKey))
+            .map(item => {
+                const thisSubTransactionIds = new Set(
+                    (item.allTransactions || []).map(t => getTransactionId(t))
+                );
 
-            // Find transactions assigned TO this item from other sources
-            const incomingAssignedIds = new Set(assignmentsByTarget[item.merchantKey] || []);
-            const incomingTransactions = transactions.filter(t => {
-                const txnId = getTransactionId(t);
-                // Include if assigned to this item AND not already in original transactions
-                return incomingAssignedIds.has(txnId) && !thisSubTransactionIds.has(txnId);
-            });
+                // Find transactions reassigned AWAY from this item
+                const reassignedFromThisSub = new Set(
+                    Object.entries(chargeAssignments)
+                        .filter(([txnId, targetKey]) =>
+                            thisSubTransactionIds.has(txnId) &&
+                            targetKey !== item.merchantKey &&
+                            activeKeys.has(targetKey)
+                        )
+                        .map(([txnId]) => txnId)
+                );
 
-            // Combine: original transactions (minus reassigned) + incoming assigned
-            const filteredTransactions = (item.allTransactions || [])
-                .filter(t => !reassignedFromThisSub.has(getTransactionId(t)));
+                // Find transactions assigned TO this item from other sources
+                const incomingAssignedIds = new Set(assignmentsByTarget[item.merchantKey] || []);
+                const incomingTransactions = transactions.filter(t => {
+                    const txnId = getTransactionId(t);
+                    // Include if assigned to this item AND not already in original transactions
+                    return incomingAssignedIds.has(txnId) && !thisSubTransactionIds.has(txnId);
+                });
 
-            const combinedTransactions = [...filteredTransactions, ...incomingTransactions];
+                // Combine: original transactions (minus reassigned) + incoming assigned
+                const filteredTransactions = (item.allTransactions || [])
+                    .filter(t => !reassignedFromThisSub.has(getTransactionId(t)));
 
-            if (combinedTransactions.length === 0 && item.allTransactions?.length > 0) return null;
+                const combinedTransactions = [...filteredTransactions, ...incomingTransactions];
 
-            const amounts = combinedTransactions.map(t => t.amount || t.debit || t.credit || 0);
-            const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : 0;
-            const totalSpent = amounts.reduce((a, b) => a + b, 0);
+                if (combinedTransactions.length === 0 && item.allTransactions?.length > 0) return null;
 
-            // Calculate status
-            let gracePeriod = 20;
-            if (item.frequency === 'Yearly' || item.frequency === 'Quarterly') gracePeriod = 45;
-            const expiryThreshold = new Date(item.nextDate);
-            expiryThreshold.setDate(expiryThreshold.getDate() + gracePeriod);
-            const status = datasetEndDate > expiryThreshold ? 'Expired' : 'Active';
+                const amounts = combinedTransactions.map(t => t.amount || t.debit || t.credit || 0);
+                const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : 0;
+                const totalSpent = amounts.reduce((a, b) => a + b, 0);
 
-            return {
-                ...item,
-                allTransactions: combinedTransactions,
-                count: combinedTransactions.length,
-                latestAmount,
-                totalSpent,
-                status
-            };
-        }).filter(Boolean);
+                // Calculate status
+                let gracePeriod = 20;
+                if (item.frequency === 'Yearly' || item.frequency === 'Quarterly') gracePeriod = 45;
+                const expiryThreshold = new Date(item.nextDate);
+                expiryThreshold.setDate(expiryThreshold.getDate() + gracePeriod);
+                const status = datasetEndDate > expiryThreshold ? 'Expired' : 'Active';
+
+                return {
+                    ...item,
+                    allTransactions: combinedTransactions,
+                    count: combinedTransactions.length,
+                    latestAmount,
+                    totalSpent,
+                    status,
+                    // Mark as merged if this item has a mergedSubscriptions entry (was a merge target)
+                    isMerged: !!mergedSubscriptions[item.merchantKey]
+                };
+            }).filter(Boolean);
 
         const manualItems = manualRecurring
             .filter(m => !approved.includes(m.merchantKey))
@@ -358,8 +371,10 @@ export default function Subscriptions() {
                 };
             });
 
+        // Only create mergedItems for newly-created merged subscriptions (keys starting with 'merged_')
+        // Existing items that were merge targets are already handled in processedApproved
         const mergedItems = Object.entries(mergedSubscriptions || {})
-            .filter(([key, data]) => data && typeof data === 'object')
+            .filter(([key, data]) => data && typeof data === 'object' && key.startsWith('merged_'))
             .map(([key, data]) => {
                 const assignedTxnIds = new Set(assignmentsByTarget[key] || []);
                 const assignedTransactions = transactions.filter(t =>
@@ -773,6 +788,85 @@ export default function Subscriptions() {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Floating Merge Action Bar */}
+            {mergeSelected.length > 0 && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '24px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    padding: '12px 20px',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.95) 0%, rgba(139, 92, 246, 0.95) 100%)',
+                    borderRadius: '16px',
+                    boxShadow: '0 8px 32px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+                    backdropFilter: 'blur(10px)',
+                    zIndex: 1000,
+                    animation: 'slideUp 0.3s ease-out'
+                }}>
+                    <style>{`
+                        @keyframes slideUp {
+                            from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+                            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+                        }
+                    `}</style>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: 'white',
+                        fontSize: '0.9rem',
+                        fontWeight: 500
+                    }}>
+                        <GitMerge size={18} />
+                        <span>{mergeSelected.length} items selected</span>
+                    </div>
+                    <button
+                        onClick={() => setShowMergePrompt(true)}
+                        style={{
+                            padding: '8px 20px',
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: '1px solid rgba(255, 255, 255, 0.3)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            transition: 'background 0.2s'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
+                    >
+                        <GitMerge size={14} />
+                        Merge
+                    </button>
+                    <button
+                        onClick={() => setMergeSelected([])}
+                        style={{
+                            padding: '6px',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            color: 'rgba(255, 255, 255, 0.7)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            transition: 'background 0.2s'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
+                        title="Clear selection"
+                    >
+                        <X size={16} />
+                    </button>
                 </div>
             )}
         </div>

@@ -32,19 +32,73 @@ export default function CalendarView() {
         transactions,
         personNames,
         globalRenames,
-        approvedItems
+        approvedItems,
+        manualRecurring,
+        mergedSubscriptions,
+        chargeAssignments
     } = useTransactions();
 
     // Alias for compatibility
     const approved = approvedItems;
     // ---------------------------------
 
-    // Get display info for merchant (apply global renames)
+    // Build effective names map (including splits and merges)
+    const effectiveNames = useMemo(() => {
+        const names = {};
+
+        // 1. Add manual recurring names (like splits)
+        manualRecurring.forEach(sub => {
+            if (sub.merchantKey && sub.displayName) {
+                names[sub.merchantKey] = sub.displayName;
+            }
+        });
+
+        // 2. Add merged subscription names
+        Object.entries(mergedSubscriptions || {}).forEach(([key, merge]) => {
+            if (merge.displayName) {
+                names[key] = merge.displayName;
+            }
+        });
+
+        // 3. Override with global renames if they exist
+        Object.entries(globalRenames).forEach(([key, value]) => {
+            if (value && value.displayName) {
+                names[key] = value.displayName;
+            }
+        });
+
+        return names;
+    }, [manualRecurring, mergedSubscriptions, globalRenames]);
+
+    // Get display info for merchant (apply global renames and split/merge names)
     const getDisplayMerchantInfo = (t) => {
+        // Import getTransactionId for charge assignment lookup
+        const txnId = t.id || `${t.date?.toISOString?.() || t.date}-${t.description}-${t.amount || t.debit || t.credit}`;
+
+        // 1. Check if this transaction is assigned to a different subscription (split/merge)
+        const assignedTo = chargeAssignments[txnId];
+        if (assignedTo && effectiveNames[assignedTo]) {
+            return {
+                displayName: effectiveNames[assignedTo],
+                originalName: t.description,
+                isRenamed: true
+            };
+        }
+
         const merchantKey = getMerchantKey(t.description);
         const txnAmount = Math.abs(t.amount || t.debit || t.credit || 0).toFixed(2);
         const amountKey = `${merchantKey}-${txnAmount}`;
 
+        // 2. Check effective names (includes manual recurring and merges)
+        if (effectiveNames[merchantKey]) {
+            return {
+                displayName: effectiveNames[merchantKey],
+                originalName: t.description,
+                isRenamed: true
+            };
+        }
+
+        // 3. Check global renames with amount key
         if (globalRenames[amountKey]?.displayName) {
             return {
                 displayName: globalRenames[amountKey].displayName,
@@ -60,7 +114,7 @@ export default function CalendarView() {
             };
         }
 
-        // Fallback search by originalMerchant + amount
+        // 4. Fallback search by originalMerchant + amount
         for (const [key, rename] of Object.entries(globalRenames)) {
             if (rename.originalMerchant && rename.amount) {
                 const renameOrigKey = getMerchantKey(rename.originalMerchant);
@@ -106,15 +160,20 @@ export default function CalendarView() {
 
         approvedSubs.forEach(sub => {
             let nextDate = new Date(sub.nextDate);
+            // Look up the effective display name for this subscription
+            const displayName = effectiveNames[sub.merchantKey] || sub.merchant;
+
             while (nextDate <= endDate) {
                 if (nextDate >= todayStart) {
                     const key = nextDate.toDateString();
                     if (!renewals[key]) renewals[key] = [];
                     renewals[key].push({
-                        merchant: sub.merchant,
+                        merchant: displayName,
+                        merchantKey: sub.merchantKey,
                         amount: sub.latestAmount,
                         frequency: sub.frequency,
-                        isProjected: true
+                        isProjected: true,
+                        isRenamed: displayName !== sub.merchant
                     });
                 }
 
@@ -127,7 +186,7 @@ export default function CalendarView() {
             }
         });
         return renewals;
-    }, [subscriptions, approved, currentYear, currentMonth, today]);
+    }, [subscriptions, approved, currentYear, currentMonth, today, effectiveNames]);
 
     const daysInMonth = getDaysInMonth(currentYear, currentMonth);
     const firstDay = getFirstDayOfMonth(currentYear, currentMonth);

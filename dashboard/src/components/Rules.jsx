@@ -288,7 +288,12 @@ export default function Rules() {
                                         <div className={styles.ruleContent}>
                                             <span className={styles.ruleNew}>{merge.displayName || key}</span>
                                             <span className={styles.mergeDetails}>
-                                                ({(merge.mergedFrom?.length || 0) + 1} items in this bundle)
+                                                {/* For new merged items (merged_*), mergedFrom contains all sources
+                                                    For existing items as targets, mergedFrom doesn't include the target, so +1 */}
+                                                ({key.startsWith('merged_')
+                                                    ? merge.mergedFrom?.length || 0
+                                                    : (merge.mergedFrom?.length || 0) + 1
+                                                } items in this bundle)
                                             </span>
                                         </div>
                                         <button

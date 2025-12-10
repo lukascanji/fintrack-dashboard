@@ -35,7 +35,8 @@ export default function TransactionTable({ showToast }) {
         approvedItems, setApprovedItems,
         transactions, recategorizeAll,
         chargeAssignments,
-        manualRecurring
+        manualRecurring,
+        mergedSubscriptions
     } = useTransactions();
 
     // Aliases for compatibility
@@ -277,7 +278,14 @@ export default function TransactionTable({ showToast }) {
             }
         });
 
-        // 2. Override with global renames if they exist
+        // 2. Add merged subscription names
+        Object.entries(mergedSubscriptions || {}).forEach(([key, merge]) => {
+            if (merge.displayName) {
+                names[key] = merge.displayName;
+            }
+        });
+
+        // 3. Override with global renames if they exist
         Object.entries(globalRenames).forEach(([key, value]) => {
             if (value && value.displayName) {
                 names[key] = value.displayName;
@@ -285,7 +293,7 @@ export default function TransactionTable({ showToast }) {
         });
 
         return names;
-    }, [manualRecurring, globalRenames]);
+    }, [manualRecurring, mergedSubscriptions, globalRenames]);
 
     const categories = useMemo(() => {
         if (!transactions) return [];
@@ -513,8 +521,23 @@ export default function TransactionTable({ showToast }) {
                                 onAddAllRecurring={() => addAllMatchingToRecurring(t)}
                                 isRecurring={isRecurring(t)}
                                 matchCount={countMatching(t)}
-                                chargeAssignment={chargeAssignments[t.id]}
-                                effectiveName={chargeAssignments[t.id] ? effectiveNames[chargeAssignments[t.id]] : undefined}
+                                chargeAssignment={chargeAssignments[getTransactionId(t)]}
+                                effectiveName={(() => {
+                                    const txnId = getTransactionId(t);
+                                    // Priority 1: Charge assignment redirect
+                                    if (chargeAssignments[txnId]) {
+                                        return effectiveNames[chargeAssignments[txnId]];
+                                    }
+                                    // Priority 2: Try merchantKey with amount suffix (e.g., "paypal-25.98")
+                                    const baseKey = getMerchantKey(t.description);
+                                    const amount = Math.abs(t.debit || t.credit || t.amount || 0).toFixed(2);
+                                    const amountKey = `${baseKey}-${amount}`;
+                                    if (effectiveNames[amountKey]) {
+                                        return effectiveNames[amountKey];
+                                    }
+                                    // Priority 3: Try base merchantKey
+                                    return effectiveNames[baseKey];
+                                })()}
                             />
                         ))}
                     </tbody>

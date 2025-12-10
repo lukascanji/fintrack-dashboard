@@ -29,6 +29,7 @@ export default function RecurringItem({
         manualRecurring, setManualRecurring,
         setChargeAssignments,
         mergedSubscriptions, setMergedSubscriptions,
+        splitSubscriptions, setSplitSubscriptions,
         approvedItems, setApprovedItems, setDeniedItems // For removing manual items
     } = useTransactions();
 
@@ -145,6 +146,32 @@ export default function RecurringItem({
             });
             localStorage.setItem('fintrack_charge_assignments', JSON.stringify(updated));
             return updated;
+        });
+
+        // Cleanup split records that reference this subscription
+        setSplitSubscriptions(prev => {
+            const updated = { ...prev };
+            let hasChanges = false;
+            Object.entries(updated).forEach(([key, split]) => {
+                // If this subscription was created by a split, clean up
+                if (split.createdSubscriptions?.includes(sub.merchantKey)) {
+                    // Remove this subscription from the split record
+                    updated[key] = {
+                        ...split,
+                        createdSubscriptions: split.createdSubscriptions.filter(k => k !== sub.merchantKey),
+                        splitTo: (split.splitTo || []).filter(k => k !== sub.merchantKey)
+                    };
+                    // If no more targets, remove the split record entirely
+                    if (updated[key].splitTo?.length === 0) {
+                        delete updated[key];
+                    }
+                    hasChanges = true;
+                }
+            });
+            if (hasChanges) {
+                localStorage.setItem('fintrack_split_subscriptions', JSON.stringify(updated));
+            }
+            return hasChanges ? updated : prev;
         });
     };
 
