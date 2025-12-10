@@ -6,31 +6,34 @@ Track changes since last commit. Clear after committing.
 
 ## Current Session Changes
 
-### Testing Framework Setup (2024-12-10)
-
-**Files Added:**
-- `dashboard/vitest.config.js` - Vitest configuration
-- `dashboard/playwright.config.js` - Playwright E2E configuration
-- `dashboard/src/__tests__/setup.js` - Test setup file
-- `dashboard/src/__tests__/fixtures/mockData.js` - Mock transaction data
-- `dashboard/src/__tests__/utils/transactionId.test.js` - 9 tests
-- `dashboard/src/__tests__/utils/categorize.test.js` - 17 tests
-- `dashboard/src/__tests__/context/merge.test.js` - 8 tests
-- `dashboard/src/__tests__/context/split.test.js` - 7 tests
-- `dashboard/src/__tests__/context/rename.test.js` - 10 tests
-- `dashboard/e2e/merge.spec.js` - E2E merge flow tests
-- `dashboard/e2e/split.spec.js` - E2E split flow tests
-- `dashboard/e2e/rename.spec.js` - E2E rename flow tests
+### Calendar Future Projections Fix (2024-12-10)
 
 **Files Modified:**
-- `dashboard/package.json` - Added test scripts
+- `dashboard/src/components/CalendarView.jsx`
 
-**Tests:** 61 unit tests passing
+**Fix 1: Include splits and merges in projections**
+- Added `splitSubscriptions` to context import
+- Merged subscriptions now project correctly
 
-**Status:** Ready to commit
+**Fix 2: Split subscription timing and amounts**
+- Parent subscriptions that were split are now EXCLUDED from projections
+- Split children calculate `nextDate` from their assigned transactions
+- Amount is derived from actual transaction data
+- Frequency is auto-detected from transaction patterns
 
 ---
 
-## Notes
+### Merge Dropdown Display Names (2024-12-10)
+
+**Files Modified:**
+- `dashboard/src/components/Subscriptions.jsx`
+
+**Fix:**
+- Added `globalRenames` to context import
+- Created `getEffectiveName()` helper that checks: globalRenames → mergedSubscriptions → displayName → merchant
+- Dropdown options now show renamed names correctly
+- Pre-fill uses renamed name when selecting existing item
+
+**Tests:** 61/61 passing
 - When this list gets long, prompt user to commit
 - Clear this file after each successful commit

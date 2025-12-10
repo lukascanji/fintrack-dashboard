@@ -51,6 +51,7 @@ export default function Subscriptions() {
         mergedSubscriptions, setMergedSubscriptions,
         splitSubscriptions, setSplitSubscriptions,
         categoryOverrides,
+        globalRenames,
         setGlobalRenames,
         setCustomNames,
     } = useTransactions();
@@ -71,6 +72,22 @@ export default function Subscriptions() {
     const setApproved = setApprovedItems;
     const denied = deniedItems;
     const setDenied = setDeniedItems;
+
+    // Helper to get effective display name (checks globalRenames, mergedSubscriptions, then falls back to merchant)
+    const getEffectiveName = (sub) => {
+        // Check globalRenames (with amount key first, then base key)
+        const amountKey = `${sub.merchantKey}-${sub.latestAmount?.toFixed(2)}`;
+        if (globalRenames[amountKey]?.displayName) return globalRenames[amountKey].displayName;
+        if (globalRenames[sub.merchantKey]?.displayName) return globalRenames[sub.merchantKey].displayName;
+
+        // Check mergedSubscriptions
+        if (mergedSubscriptions[sub.merchantKey]?.displayName) return mergedSubscriptions[sub.merchantKey].displayName;
+
+        // Check if item itself has displayName (manual recurring / splits)
+        if (sub.displayName) return sub.displayName;
+
+        return sub.merchant;
+    };
 
     // --- Actions ---
 
@@ -688,9 +705,9 @@ export default function Subscriptions() {
                                 onChange={(e) => {
                                     setMergeTarget(e.target.value);
                                     if (e.target.value !== 'new') {
-                                        // If selecting existing item, pre-fill name with that item's name
+                                        // If selecting existing item, pre-fill name with that item's display name
                                         const existing = allApprovedItems.find(s => s.merchantKey === e.target.value);
-                                        if (existing) setMergedName(existing.merchant);
+                                        if (existing) setMergedName(getEffectiveName(existing));
                                     } else {
                                         setMergedName('');
                                     }
@@ -712,7 +729,7 @@ export default function Subscriptions() {
                                         .filter(s => !mergeSelected.includes(s.merchantKey))
                                         .map(s => (
                                             <option key={s.merchantKey} value={s.merchantKey}>
-                                                {s.merchant} (${s.latestAmount.toFixed(2)}/mo)
+                                                {getEffectiveName(s)} (${s.latestAmount.toFixed(2)}/mo)
                                             </option>
                                         ))
                                     }
@@ -723,7 +740,7 @@ export default function Subscriptions() {
                                             .filter(s => mergeSelected.includes(s.merchantKey))
                                             .map(s => (
                                                 <option key={s.merchantKey} value={s.merchantKey}>
-                                                    {s.merchant} (${s.latestAmount.toFixed(2)}/mo)
+                                                    {getEffectiveName(s)} (${s.latestAmount.toFixed(2)}/mo)
                                                 </option>
                                             ))
                                         }
@@ -789,86 +806,89 @@ export default function Subscriptions() {
                         </div>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Floating Merge Action Bar */}
-            {mergeSelected.length > 0 && (
-                <div style={{
-                    position: 'fixed',
-                    bottom: '24px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    padding: '12px 20px',
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.95) 0%, rgba(139, 92, 246, 0.95) 100%)',
-                    borderRadius: '16px',
-                    boxShadow: '0 8px 32px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
-                    backdropFilter: 'blur(10px)',
-                    zIndex: 1000,
-                    animation: 'slideUp 0.3s ease-out'
-                }}>
-                    <style>{`
+            {
+                mergeSelected.length > 0 && (
+                    <div style={{
+                        position: 'fixed',
+                        bottom: '24px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px',
+                        padding: '12px 20px',
+                        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.95) 0%, rgba(139, 92, 246, 0.95) 100%)',
+                        borderRadius: '16px',
+                        boxShadow: '0 8px 32px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+                        backdropFilter: 'blur(10px)',
+                        zIndex: 1000,
+                        animation: 'slideUp 0.3s ease-out'
+                    }}>
+                        <style>{`
                         @keyframes slideUp {
                             from { transform: translateX(-50%) translateY(100px); opacity: 0; }
                             to { transform: translateX(-50%) translateY(0); opacity: 1; }
                         }
                     `}</style>
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        color: 'white',
-                        fontSize: '0.9rem',
-                        fontWeight: 500
-                    }}>
-                        <GitMerge size={18} />
-                        <span>{mergeSelected.length} items selected</span>
-                    </div>
-                    <button
-                        onClick={() => setShowMergePrompt(true)}
-                        style={{
-                            padding: '8px 20px',
-                            background: 'rgba(255, 255, 255, 0.2)',
-                            border: '1px solid rgba(255, 255, 255, 0.3)',
-                            borderRadius: '8px',
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
                             color: 'white',
-                            cursor: 'pointer',
-                            fontWeight: 600,
-                            fontSize: '0.85rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            transition: 'background 0.2s'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)'}
-                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
-                    >
-                        <GitMerge size={14} />
-                        Merge
-                    </button>
-                    <button
-                        onClick={() => setMergeSelected([])}
-                        style={{
-                            padding: '6px',
-                            background: 'rgba(255, 255, 255, 0.1)',
-                            border: 'none',
-                            borderRadius: '6px',
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            transition: 'background 0.2s'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
-                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
-                        title="Clear selection"
-                    >
-                        <X size={16} />
-                    </button>
-                </div>
-            )}
-        </div>
+                            fontSize: '0.9rem',
+                            fontWeight: 500
+                        }}>
+                            <GitMerge size={18} />
+                            <span>{mergeSelected.length} items selected</span>
+                        </div>
+                        <button
+                            onClick={() => setShowMergePrompt(true)}
+                            style={{
+                                padding: '8px 20px',
+                                background: 'rgba(255, 255, 255, 0.2)',
+                                border: '1px solid rgba(255, 255, 255, 0.3)',
+                                borderRadius: '8px',
+                                color: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 600,
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'background 0.2s'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)'}
+                            onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
+                        >
+                            <GitMerge size={14} />
+                            Merge
+                        </button>
+                        <button
+                            onClick={() => setMergeSelected([])}
+                            style={{
+                                padding: '6px',
+                                background: 'rgba(255, 255, 255, 0.1)',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                transition: 'background 0.2s'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
+                            onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
+                            title="Clear selection"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                )
+            }
+        </div >
     );
 }
