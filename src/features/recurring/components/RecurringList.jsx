@@ -12,7 +12,7 @@ export default function RecurringList({
     return (
         <div style={{ flex: 1 }}>
             {Object.entries(groupedSubscriptions).map(([category, items]) => (
-                <div key={category} className="card" style={{ marginBottom: '24px' }}>
+                <div key={category} className="card" style={{ marginBottom: '24px', position: 'relative', zIndex: 'auto', overflow: 'visible' }}>
                     <div className="card-title" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {category}

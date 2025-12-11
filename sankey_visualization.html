@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinTrack - Transaction Flow Sankey</title>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- D3.js for Sankey Diagram -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+
+    <style>
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-card: rgba(30, 30, 50, 0.7);
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --accent-primary: #6366f1;
+            --accent-secondary: #8b5cf6;
+            --accent-success: #10b981;
+            --accent-warning: #f59e0b;
+            --accent-danger: #ef4444;
+            --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.15);
+            --radius-lg: 16px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 32px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .period-selector {
+            display: flex;
+            gap: 8px;
+        }
+
+        .period-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .period-btn:hover {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text-primary);
+        }
+
+        .period-btn.active {
+            background: var(--gradient-primary);
+            color: white;
+            border-color: transparent;
+        }
+
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .card-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .total-badges {
+            display: flex;
+            gap: 16px;
+        }
+
+        .total-badge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 20px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .total-badge-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .total-badge-value {
+            font-size: 1.125rem;
+            font-weight: 700;
+        }
+
+        .total-badge-value.income {
+            color: var(--accent-success);
+        }
+
+        .total-badge-value.expenses {
+            color: var(--accent-danger);
+        }
+
+        .sankey-container {
+            position: relative;
+            width: 100%;
+            height: 700px;
+            overflow: hidden;
+        }
+
+        #sankey-chart {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node rect {
+            fill-opacity: 0.9;
+            shape-rendering: crispEdges;
+            cursor: pointer;
+            transition: fill-opacity 0.2s ease;
+        }
+
+        .node rect:hover {
+            fill-opacity: 1;
+        }
+
+        .node text {
+            pointer-events: none;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .link {
+            fill: none;
+            stroke-opacity: 0.25;
+            transition: stroke-opacity 0.2s ease;
+        }
+
+        .link:hover {
+            stroke-opacity: 0.6;
+        }
+
+        .tooltip {
+            position: absolute;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.875rem;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+        }
+
+        .tooltip-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .tooltip-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+            margin: 4px 0;
+        }
+
+        .tooltip-label {
+            color: var(--text-secondary);
+        }
+
+        .tooltip-value {
+            font-weight: 600;
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .stat-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .view-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .view-btn.active {
+            background: var(--accent-primary);
+            color: white;
+        }
+
+        .flow-direction {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            margin-bottom: 16px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .flow-arrow {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .flow-arrow svg {
+            width: 20px;
+            height: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <div class="logo">FinTrack</div>
+                <div style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 4px;">
+                    Transaction Flow Visualization
+                </div>
+            </div>
+            <div class="period-selector">
+                <button class="period-btn" data-months="1">1M</button>
+                <button class="period-btn" data-months="3">3M</button>
+                <button class="period-btn active" data-months="6">6M</button>
+                <button class="period-btn" data-months="12">1Y</button>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Income</div>
+                <div class="stat-value" style="color: var(--accent-success);" id="stat-income">$0</div>
+                <div class="stat-meta" id="stat-income-meta">0 transactions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Expenses</div>
+                <div class="stat-value" style="color: var(--accent-danger);" id="stat-expenses">$0</div>
+                <div class="stat-meta" id="stat-expenses-meta">0 transactions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Net Cash Flow</div>
+                <div class="stat-value" id="stat-net">$0</div>
+                <div class="stat-meta" id="stat-net-meta">savings rate: 0%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Largest Category</div>
+                <div class="stat-value" id="stat-largest">-</div>
+                <div class="stat-meta" id="stat-largest-meta">$0</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Money Flow Diagram</div>
+                    <div class="card-subtitle">Visualizing how money moves through your accounts</div>
+                </div>
+                <div class="total-badges">
+                    <div class="total-badge">
+                        <span class="total-badge-label">Income</span>
+                        <span class="total-badge-value income" id="badge-income">$0</span>
+                    </div>
+                    <div class="total-badge">
+                        <span class="total-badge-label">Expenses</span>
+                        <span class="total-badge-value expenses" id="badge-expenses">$0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-direction">
+                <div class="flow-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                    <span>Income Sources → Categories → Spending Breakdown</span>
+                </div>
+            </div>
+
+            <div class="sankey-container">
+                <svg id="sankey-chart"></svg>
+            </div>
+
+            <div class="legend" id="legend"></div>
+        </div>
+
+        <div class="tooltip" id="tooltip">
+            <div class="tooltip-title"></div>
+            <div class="tooltip-content"></div>
+        </div>
+    </div>
+
+    <script>
+        // Category colors matching FinTrack design
+        const categoryColors = {
+            'ENTERTAINMENT': '#a855f7',
+            'DINING': '#ec4899',
+            'GROCERIES': '#10b981',
+            'SHOPPING': '#6366f1',
+            'UTILITIES': '#06b6d4',
+            'GAMBLING': '#ef4444',
+            'FEES': '#f59e0b',
+            'INCOME': '#22c55e',
+            'TRANSFER': '#64748b',
+            'TRANSPORTATION': '#f97316',
+            'OTHER': '#71717a'
+        };
+
+        // Source colors for income
+        const sourceColors = {
+            'Salary': '#22c55e',
+            'Freelance': '#059669',
+            'E-Transfers In': '#34d399',
+            'Tax Refund': '#4ade80',
+            'Other Income': '#86efac'
+        };
+
+        // Expanded sample transaction data (simulating real financial flows)
+        // This represents 6 months of data for demonstration
+        const sampleData = {
+            "6": {
+                income: {
+                    'Salary': 28500,
+                    'Freelance': 3200,
+                    'E-Transfers In': 1850,
+                    'Tax Refund': 2100,
+                    'Other Income': 450
+                },
+                expenses: {
+                    'ENTERTAINMENT': {
+                        total: 1245,
+                        breakdown: {
+                            'Netflix': 89.94,
+                            'Spotify': 65.94,
+                            'YouTube Premium': 83.94,
+                            'Disney+': 53.94,
+                            'Apple TV': 101.94,
+                            'Amazon Prime': 99,
+                            'OpenAI ChatGPT': 120,
+                            'GitHub': 48,
+                            'Codecademy': 239.40,
+                            'Other Streaming': 242.90
+                        }
+                    },
+                    'DINING': {
+                        total: 2876,
+                        breakdown: {
+                            'Uber Eats': 456.23,
+                            'DoorDash': 312.45,
+                            'Skip The Dishes': 198.67,
+                            'Tim Hortons': 287.90,
+                            'McDonalds': 156.34,
+                            'Starbucks': 234.56,
+                            'Restaurants': 892.45,
+                            'Other Dining': 337.40
+                        }
+                    },
+                    'GROCERIES': {
+                        total: 3245,
+                        breakdown: {
+                            'Costco': 1456.78,
+                            'Metro': 567.89,
+                            'Walmart': 445.67,
+                            'No Frills': 398.45,
+                            'Loblaws': 234.56,
+                            'Other Groceries': 141.65
+                        }
+                    },
+                    'SHOPPING': {
+                        total: 2134,
+                        breakdown: {
+                            'Amazon': 1234.56,
+                            'Best Buy': 345.67,
+                            'Canadian Tire': 189.90,
+                            'Home Depot': 234.78,
+                            'Other Shopping': 129.09
+                        }
+                    },
+                    'UTILITIES': {
+                        total: 1567,
+                        breakdown: {
+                            'Starlink': 780,
+                            'Hydro': 456.78,
+                            'Gas Bill': 234.56,
+                            'Phone/Internet': 95.66
+                        }
+                    },
+                    'TRANSPORTATION': {
+                        total: 1890,
+                        breakdown: {
+                            'Gas Stations': 1234.56,
+                            'Uber Trips': 345.67,
+                            'Parking': 189.45,
+                            'Car Maintenance': 120.32
+                        }
+                    },
+                    'FEES': {
+                        total: 234,
+                        breakdown: {
+                            'Bank Fees': 89.70,
+                            'Interest Charges': 78.45,
+                            'Other Fees': 65.85
+                        }
+                    },
+                    'GAMBLING': {
+                        total: 567,
+                        breakdown: {
+                            'TheScore': 234.56,
+                            'Bet365': 156.78,
+                            'Other Betting': 175.66
+                        }
+                    },
+                    'OTHER': {
+                        total: 1456,
+                        breakdown: {
+                            'Healthcare': 456.78,
+                            'Insurance': 567.89,
+                            'Miscellaneous': 431.33
+                        }
+                    }
+                },
+                transfers: {
+                    'E-Transfers Out': 2340,
+                    'CC Payments': 8500,
+                    'Savings': 4200
+                }
+            },
+            "1": {
+                income: {
+                    'Salary': 4750,
+                    'Freelance': 800,
+                    'E-Transfers In': 250,
+                    'Other Income': 100
+                },
+                expenses: {
+                    'ENTERTAINMENT': { total: 189, breakdown: { 'Netflix': 14.99, 'Spotify': 10.99, 'YouTube Premium': 13.99, 'OpenAI ChatGPT': 20, 'Other': 129.03 } },
+                    'DINING': { total: 456, breakdown: { 'Uber Eats': 89.45, 'Tim Hortons': 45.67, 'Restaurants': 234.56, 'Other': 86.32 } },
+                    'GROCERIES': { total: 567, breakdown: { 'Costco': 234.56, 'Metro': 189.78, 'Other': 142.66 } },
+                    'SHOPPING': { total: 234, breakdown: { 'Amazon': 156.78, 'Other': 77.22 } },
+                    'UTILITIES': { total: 267, breakdown: { 'Starlink': 130, 'Hydro': 89.45, 'Other': 47.55 } },
+                    'TRANSPORTATION': { total: 312, breakdown: { 'Gas': 234.56, 'Uber': 45.67, 'Other': 31.77 } },
+                    'FEES': { total: 45, breakdown: { 'Bank Fees': 14.95, 'Other': 30.05 } },
+                    'OTHER': { total: 189, breakdown: { 'Miscellaneous': 189 } }
+                },
+                transfers: { 'E-Transfers Out': 450, 'Savings': 800 }
+            },
+            "3": {
+                income: {
+                    'Salary': 14250,
+                    'Freelance': 1600,
+                    'E-Transfers In': 750,
+                    'Tax Refund': 0,
+                    'Other Income': 200
+                },
+                expenses: {
+                    'ENTERTAINMENT': { total: 567, breakdown: { 'Netflix': 44.97, 'Spotify': 32.97, 'YouTube Premium': 41.97, 'OpenAI ChatGPT': 60, 'Other Streaming': 387.09 } },
+                    'DINING': { total: 1234, breakdown: { 'Uber Eats': 234.56, 'Restaurants': 456.78, 'Tim Hortons': 145.67, 'Other': 396.99 } },
+                    'GROCERIES': { total: 1678, breakdown: { 'Costco': 678.90, 'Metro': 345.67, 'Walmart': 234.56, 'Other': 418.87 } },
+                    'SHOPPING': { total: 890, breakdown: { 'Amazon': 567.89, 'Best Buy': 189.45, 'Other': 132.66 } },
+                    'UTILITIES': { total: 789, breakdown: { 'Starlink': 390, 'Hydro': 234.56, 'Gas Bill': 112.34, 'Other': 52.10 } },
+                    'TRANSPORTATION': { total: 934, breakdown: { 'Gas Stations': 567.89, 'Uber Trips': 189.45, 'Other': 176.66 } },
+                    'FEES': { total: 112, breakdown: { 'Bank Fees': 44.85, 'Interest': 34.56, 'Other': 32.59 } },
+                    'GAMBLING': { total: 234, breakdown: { 'TheScore': 134.56, 'Other': 99.44 } },
+                    'OTHER': { total: 678, breakdown: { 'Healthcare': 234.56, 'Insurance': 234.56, 'Other': 208.88 } }
+                },
+                transfers: { 'E-Transfers Out': 1200, 'CC Payments': 4500, 'Savings': 2100 }
+            },
+            "12": {
+                income: {
+                    'Salary': 57000,
+                    'Freelance': 8400,
+                    'E-Transfers In': 3650,
+                    'Tax Refund': 4200,
+                    'Other Income': 1200
+                },
+                expenses: {
+                    'ENTERTAINMENT': { total: 2890, breakdown: { 'Netflix': 179.88, 'Spotify': 131.88, 'YouTube Premium': 167.88, 'Disney+': 107.88, 'Apple TV': 203.88, 'Amazon Prime': 198, 'OpenAI ChatGPT': 240, 'GitHub': 96, 'Codecademy': 478.80, 'Other Streaming': 1085.92 } },
+                    'DINING': { total: 5678, breakdown: { 'Uber Eats': 912.46, 'DoorDash': 624.90, 'Skip The Dishes': 397.34, 'Tim Hortons': 575.80, 'McDonalds': 312.68, 'Starbucks': 469.12, 'Restaurants': 1784.90, 'Other Dining': 600.80 } },
+                    'GROCERIES': { total: 6890, breakdown: { 'Costco': 2913.56, 'Metro': 1135.78, 'Walmart': 891.34, 'No Frills': 796.90, 'Loblaws': 469.12, 'Other Groceries': 683.30 } },
+                    'SHOPPING': { total: 4567, breakdown: { 'Amazon': 2469.12, 'Best Buy': 691.34, 'Canadian Tire': 379.80, 'Home Depot': 469.56, 'IKEA': 345.67, 'Other Shopping': 211.51 } },
+                    'UTILITIES': { total: 3234, breakdown: { 'Starlink': 1560, 'Hydro': 913.56, 'Gas Bill': 469.12, 'Phone/Internet': 291.32 } },
+                    'TRANSPORTATION': { total: 4123, breakdown: { 'Gas Stations': 2469.12, 'Uber Trips': 891.34, 'Parking': 378.90, 'Car Maintenance': 383.64 } },
+                    'FEES': { total: 567, breakdown: { 'Bank Fees': 179.40, 'Interest Charges': 234.90, 'Annual Fee': 89.00, 'Other Fees': 63.70 } },
+                    'GAMBLING': { total: 1234, breakdown: { 'TheScore': 569.12, 'Bet365': 413.56, 'Other Betting': 251.32 } },
+                    'OTHER': { total: 3456, breakdown: { 'Healthcare': 1113.56, 'Insurance': 1235.78, 'Miscellaneous': 1106.66 } }
+                },
+                transfers: { 'E-Transfers Out': 5680, 'CC Payments': 18000, 'Savings': 9200 }
+            }
+        };
+
+        let selectedPeriod = "6";
+
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(value);
+        }
+
+        function updateStats(data) {
+            const totalIncome = Object.values(data.income).reduce((a, b) => a + b, 0);
+            const totalExpenses = Object.values(data.expenses).reduce((a, b) => a + b.total, 0);
+            const netFlow = totalIncome - totalExpenses - Object.values(data.transfers).reduce((a, b) => a + b, 0);
+            const savingsRate = totalIncome > 0 ? ((netFlow / totalIncome) * 100).toFixed(1) : 0;
+
+            const expenseCategories = Object.entries(data.expenses).sort((a, b) => b[1].total - a[1].total);
+            const largestCategory = expenseCategories[0];
+
+            document.getElementById('stat-income').textContent = formatCurrency(totalIncome);
+            document.getElementById('stat-income-meta').textContent = `${Object.keys(data.income).length} sources`;
+
+            document.getElementById('stat-expenses').textContent = formatCurrency(totalExpenses);
+            document.getElementById('stat-expenses-meta').textContent = `${expenseCategories.length} categories`;
+
+            const netEl = document.getElementById('stat-net');
+            netEl.textContent = formatCurrency(Math.abs(netFlow));
+            netEl.style.color = netFlow >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)';
+            document.getElementById('stat-net-meta').textContent = `savings rate: ${savingsRate}%`;
+
+            document.getElementById('stat-largest').textContent = largestCategory[0];
+            document.getElementById('stat-largest-meta').textContent = formatCurrency(largestCategory[1].total);
+
+            document.getElementById('badge-income').textContent = formatCurrency(totalIncome);
+            document.getElementById('badge-expenses').textContent = formatCurrency(totalExpenses);
+        }
+
+        function buildSankeyData(data) {
+            const nodes = [];
+            const links = [];
+            const nodeMap = {};
+            let nodeIndex = 0;
+
+            function getNodeIndex(name, group) {
+                const key = `${group}:${name}`;
+                if (nodeMap[key] === undefined) {
+                    nodeMap[key] = nodeIndex++;
+                    nodes.push({ name, group });
+                }
+                return nodeMap[key];
+            }
+
+            // Add "Total Income" as the central node
+            const totalIncomeIdx = getNodeIndex('Total Income', 'income-total');
+
+            // Income sources -> Total Income
+            Object.entries(data.income).forEach(([source, amount]) => {
+                if (amount > 0) {
+                    const sourceIdx = getNodeIndex(source, 'income-source');
+                    links.push({
+                        source: sourceIdx,
+                        target: totalIncomeIdx,
+                        value: amount,
+                        sourceName: source,
+                        targetName: 'Total Income'
+                    });
+                }
+            });
+
+            // Total Income -> Categories
+            Object.entries(data.expenses).forEach(([category, info]) => {
+                const catIdx = getNodeIndex(category, 'category');
+                links.push({
+                    source: totalIncomeIdx,
+                    target: catIdx,
+                    value: info.total,
+                    sourceName: 'Total Income',
+                    targetName: category
+                });
+
+                // Categories -> Individual merchants/services
+                Object.entries(info.breakdown).forEach(([merchant, amount]) => {
+                    const merchantIdx = getNodeIndex(merchant, 'merchant');
+                    links.push({
+                        source: catIdx,
+                        target: merchantIdx,
+                        value: amount,
+                        sourceName: category,
+                        targetName: merchant
+                    });
+                });
+            });
+
+            // Total Income -> Transfers
+            if (data.transfers) {
+                Object.entries(data.transfers).forEach(([transfer, amount]) => {
+                    if (amount > 0) {
+                        const transferIdx = getNodeIndex(transfer, 'transfer');
+                        links.push({
+                            source: totalIncomeIdx,
+                            target: transferIdx,
+                            value: amount,
+                            sourceName: 'Total Income',
+                            targetName: transfer
+                        });
+                    }
+                });
+            }
+
+            return { nodes, links };
+        }
+
+        function getNodeColor(node) {
+            if (node.group === 'income-source') {
+                return sourceColors[node.name] || '#22c55e';
+            }
+            if (node.group === 'income-total') {
+                return '#22c55e';
+            }
+            if (node.group === 'category') {
+                return categoryColors[node.name] || '#71717a';
+            }
+            if (node.group === 'transfer') {
+                return '#64748b';
+            }
+            // Merchant colors - inherit from parent category
+            return '#94a3b8';
+        }
+
+        function renderSankey(data) {
+            const container = document.getElementById('sankey-chart');
+            const containerRect = container.parentElement.getBoundingClientRect();
+
+            const margin = { top: 20, right: 200, bottom: 20, left: 20 };
+            const width = containerRect.width - margin.left - margin.right;
+            const height = containerRect.height - margin.top - margin.bottom;
+
+            // Clear previous
+            d3.select('#sankey-chart').selectAll('*').remove();
+
+            const svg = d3.select('#sankey-chart')
+                .attr('width', containerRect.width)
+                .attr('height', containerRect.height);
+
+            const g = svg.append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Create sankey generator
+            const sankey = d3.sankey()
+                .nodeId(d => d.index)
+                .nodeWidth(20)
+                .nodePadding(12)
+                .nodeAlign(d3.sankeyLeft)
+                .extent([[0, 0], [width, height]]);
+
+            const sankeyData = buildSankeyData(data);
+
+            // Generate sankey layout
+            const graph = sankey({
+                nodes: sankeyData.nodes.map(d => Object.assign({}, d)),
+                links: sankeyData.links.map(d => Object.assign({}, d))
+            });
+
+            // Draw links
+            const link = g.append('g')
+                .selectAll('.link')
+                .data(graph.links)
+                .enter()
+                .append('path')
+                .attr('class', 'link')
+                .attr('d', d3.sankeyLinkHorizontal())
+                .attr('stroke', d => getNodeColor(d.source))
+                .attr('stroke-width', d => Math.max(1, d.width))
+                .on('mouseover', function (event, d) {
+                    showTooltip(event, {
+                        title: `${d.sourceName} → ${d.targetName}`,
+                        rows: [
+                            { label: 'Amount', value: formatCurrency(d.value) }
+                        ]
+                    });
+                    d3.select(this).attr('stroke-opacity', 0.6);
+                })
+                .on('mousemove', function (event) {
+                    moveTooltip(event);
+                })
+                .on('mouseout', function () {
+                    hideTooltip();
+                    d3.select(this).attr('stroke-opacity', 0.25);
+                });
+
+            // Draw nodes
+            const node = g.append('g')
+                .selectAll('.node')
+                .data(graph.nodes)
+                .enter()
+                .append('g')
+                .attr('class', 'node');
+
+            node.append('rect')
+                .attr('x', d => d.x0)
+                .attr('y', d => d.y0)
+                .attr('height', d => Math.max(1, d.y1 - d.y0))
+                .attr('width', d => d.x1 - d.x0)
+                .attr('fill', d => getNodeColor(d))
+                .attr('rx', 3)
+                .on('mouseover', function (event, d) {
+                    const incoming = graph.links.filter(l => l.target === d).reduce((s, l) => s + l.value, 0);
+                    const outgoing = graph.links.filter(l => l.source === d).reduce((s, l) => s + l.value, 0);
+
+                    const rows = [];
+                    if (incoming > 0) rows.push({ label: 'Incoming', value: formatCurrency(incoming) });
+                    if (outgoing > 0) rows.push({ label: 'Outgoing', value: formatCurrency(outgoing) });
+                    if (!incoming && !outgoing) rows.push({ label: 'Amount', value: formatCurrency(d.value) });
+
+                    showTooltip(event, {
+                        title: d.name,
+                        rows
+                    });
+                })
+                .on('mousemove', function (event) {
+                    moveTooltip(event);
+                })
+                .on('mouseout', hideTooltip);
+
+            // Add labels
+            node.append('text')
+                .attr('x', d => d.x1 + 8)
+                .attr('y', d => (d.y0 + d.y1) / 2)
+                .attr('dy', '0.35em')
+                .attr('text-anchor', 'start')
+                .attr('fill', 'var(--text-primary)')
+                .attr('font-size', '11px')
+                .attr('font-weight', d => d.group === 'income-total' || d.group === 'category' ? '600' : '400')
+                .text(d => {
+                    const value = d.value || graph.links.filter(l => l.target === d || l.source === d)[0]?.value || 0;
+                    return `${d.name} (${formatCurrency(value)})`;
+                })
+                .each(function (d) {
+                    // Hide labels that would overflow
+                    const bbox = this.getBBox();
+                    if (d.x1 + 8 + bbox.width > width + margin.right - 10) {
+                        d3.select(this).remove();
+                    }
+                });
+
+            // Update legend
+            renderLegend();
+        }
+
+        function renderLegend() {
+            const legend = document.getElementById('legend');
+            legend.innerHTML = '';
+
+            const categories = [
+                { name: 'Income', color: '#22c55e' },
+                { name: 'Entertainment', color: categoryColors.ENTERTAINMENT },
+                { name: 'Dining', color: categoryColors.DINING },
+                { name: 'Groceries', color: categoryColors.GROCERIES },
+                { name: 'Shopping', color: categoryColors.SHOPPING },
+                { name: 'Utilities', color: categoryColors.UTILITIES },
+                { name: 'Transportation', color: categoryColors.TRANSPORTATION },
+                { name: 'Fees', color: categoryColors.FEES },
+                { name: 'Gambling', color: categoryColors.GAMBLING },
+                { name: 'Transfers', color: categoryColors.TRANSFER },
+                { name: 'Other', color: categoryColors.OTHER }
+            ];
+
+            categories.forEach(cat => {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `
+                    <div class="legend-color" style="background: ${cat.color}"></div>
+                    <span>${cat.name}</span>
+                `;
+                legend.appendChild(item);
+            });
+        }
+
+        function showTooltip(event, data) {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.querySelector('.tooltip-title').textContent = data.title;
+            tooltip.querySelector('.tooltip-content').innerHTML = data.rows.map(r => `
+                <div class="tooltip-row">
+                    <span class="tooltip-label">${r.label}</span>
+                    <span class="tooltip-value">${r.value}</span>
+                </div>
+            `).join('');
+            tooltip.classList.add('visible');
+            moveTooltip(event);
+        }
+
+        function moveTooltip(event) {
+            const tooltip = document.getElementById('tooltip');
+            const x = event.pageX + 15;
+            const y = event.pageY - 10;
+            tooltip.style.left = `${x}px`;
+            tooltip.style.top = `${y}px`;
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('visible');
+        }
+
+        function updateVisualization() {
+            const data = sampleData[selectedPeriod];
+            updateStats(data);
+            renderSankey(data);
+        }
+
+        // Period selector
+        document.querySelectorAll('.period-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                selectedPeriod = this.dataset.months;
+                updateVisualization();
+            });
+        });
+
+        // Initial render
+        updateVisualization();
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            renderSankey(sampleData[selectedPeriod]);
+        });
+    </script>
+</body>
+
+</html>

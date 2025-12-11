@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { CreditCard, Building2, Users, Plus, Check, X, Edit2, RefreshCw } from 'lucide-react';
 import { ALL_CATEGORIES } from '../../../utils/constants';
 import { getMerchantKey } from '../../../utils/categorize';
+import { useClickOutside } from '../../../hooks/useClickOutside';
 
 export default function TransactionRow({
     transaction: t,
@@ -21,6 +22,14 @@ export default function TransactionRow({
     const [categoryEditOpen, setCategoryEditOpen] = useState(false);
     const [nameSelectorOpen, setNameSelectorOpen] = useState(false);
     const [newNameInput, setNewNameInput] = useState('');
+
+    // Refs for click-outside detection
+    const categoryDropdownRef = useRef(null);
+    const nameSelectorRef = useRef(null);
+
+    // Close dropdowns when clicking outside
+    useClickOutside(categoryDropdownRef, useCallback(() => setCategoryEditOpen(false), []), categoryEditOpen);
+    useClickOutside(nameSelectorRef, useCallback(() => setNameSelectorOpen(false), []), nameSelectorOpen);
 
     const getDisplayMerchantInfo = (txn) => {
         // Use assigned key if available (covers splits and umbrella items)
@@ -77,6 +86,7 @@ export default function TransactionRow({
                 {/* Category edit dropdown */}
                 {categoryEditOpen && (
                     <div
+                        ref={categoryDropdownRef}
                         onClick={(e) => e.stopPropagation()}
                         style={{
                             position: 'absolute',
@@ -188,6 +198,7 @@ export default function TransactionRow({
                 {/* Name selector dropdown */}
                 {nameSelectorOpen && (
                     <div
+                        ref={nameSelectorRef}
                         onClick={(e) => e.stopPropagation()}
                         style={{
                             position: 'absolute',
