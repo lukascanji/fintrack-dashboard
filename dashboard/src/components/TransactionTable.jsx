@@ -36,7 +36,8 @@ export default function TransactionTable({ showToast }) {
         transactions, recategorizeAll,
         chargeAssignments,
         manualRecurring,
-        mergedSubscriptions
+        mergedSubscriptions,
+        categoryOverrides, setCategoryOverrides
     } = useTransactions();
 
     // Aliases for compatibility
@@ -228,13 +229,57 @@ export default function TransactionTable({ showToast }) {
 
     // Helper to handle category changes from a row
     const handleCategoryChange = (t, newCategory) => {
-        // Save rule using description as pattern
+        const txnId = getTransactionId(t);
+        const merchantKey = getMerchantKey(t.description);
+        const amount = Math.abs(t.debit || t.credit || t.amount || 0).toFixed(2);
+
+        // Always save a pattern rule using the description so categorizeMerchant() matches
+        // This ensures the Transactions tab updates its displayed category
         saveCategoryRule(t.description, t.merchant, newCategory);
 
-        // Count how many transactions will be affected
-        const pattern = t.description.toUpperCase();
+        // Determine the key for categoryOverrides (for Recurring tab sync)
+        // Priority: chargeAssignment > amount-suffixed key > base merchantKey
+        let primaryKey;
+        if (chargeAssignments[txnId]) {
+            // This transaction is assigned to a specific subscription (e.g., imported Britbox)
+            primaryKey = chargeAssignments[txnId];
+        } else {
+            // For manual transactions, use amount-suffixed key for precision
+            primaryKey = `${merchantKey}-${amount}`;
+        }
+
+        // Update categoryOverrides for the specific key (syncs to Recurring tab)
+        const keysToUpdate = new Set([primaryKey]);
+
+        // Also update the base merchantKey if no specific assignment
+        if (!chargeAssignments[txnId]) {
+            keysToUpdate.add(merchantKey);
+        }
+
+        setCategoryOverrides(prev => {
+            const updates = {};
+            keysToUpdate.forEach(key => {
+                updates[key] = newCategory;
+            });
+            return { ...prev, ...updates };
+        });
+
+        // Count only transactions that belong to THIS specific subscription
         const affectedIds = transactions
-            .filter(txn => txn.description.toUpperCase().includes(pattern))
+            .filter(txn => {
+                const id = getTransactionId(txn);
+                // Primary match: same charge assignment
+                if (chargeAssignments[txnId] && chargeAssignments[id] === chargeAssignments[txnId]) {
+                    return true;
+                }
+                // If no chargeAssignment, match by merchantKey + amount
+                if (!chargeAssignments[txnId]) {
+                    const key = getMerchantKey(txn.description);
+                    const amt = Math.abs(txn.debit || txn.credit || txn.amount || 0).toFixed(2);
+                    if (key === merchantKey && amt === amount) return true;
+                }
+                return false;
+            })
             .map(txn => txn.id);
 
         // If filtering by category, animate items that will disappear

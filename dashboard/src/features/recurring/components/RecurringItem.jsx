@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useTransactions } from '../../../context/TransactionContext';
 import { ALL_CATEGORIES } from '../../../utils/constants';
+import { saveCategoryRule } from '../../../utils/categorize';
 import PaymentTimeline from './PaymentTimeline';
 import PaymentHistory from './PaymentHistory';
 import Dropdown from '../../../components/Dropdown';
@@ -30,7 +31,8 @@ export default function RecurringItem({
         setChargeAssignments,
         mergedSubscriptions, setMergedSubscriptions,
         splitSubscriptions, setSplitSubscriptions,
-        approvedItems, setApprovedItems, setDeniedItems // For removing manual items
+        approvedItems, setApprovedItems, setDeniedItems,
+        recategorizeAll // For triggering transaction updates
     } = useTransactions();
 
     // Local UI State
@@ -82,9 +84,35 @@ export default function RecurringItem({
         });
     };
 
-    // Category Handler
+    // Category Handler - syncs to both categoryOverrides AND pattern rules
     const handleSetCategory = (cat) => {
+        // Update categoryOverrides (for Recurring tab)
         setCategoryOverrides(prev => ({ ...prev, [sub.merchantKey]: cat }));
+
+        // Save pattern rules using ACTUAL transaction descriptions
+        // IMPORTANT: Use the ORIGINAL merchant name to avoid changing the merchant column
+        if (sub.allTransactions && sub.allTransactions.length > 0) {
+            // Save a rule for each unique description, preserving original merchant
+            const uniqueDescriptions = [...new Set(sub.allTransactions.map(t => t.description))];
+            uniqueDescriptions.forEach(desc => {
+                // Find a transaction with this description to get the original merchant
+                const txn = sub.allTransactions.find(t => t.description === desc);
+                const originalMerchant = txn?.merchant || sub.merchant;
+                saveCategoryRule(desc, originalMerchant, cat);
+            });
+        } else {
+            // Fallback: use baseMerchant or merchant as pattern
+            const pattern = sub.baseMerchant || sub.merchant;
+            if (pattern) {
+                saveCategoryRule(pattern, sub.merchant, cat);
+            }
+        }
+
+        // Trigger recategorization so Transactions tab updates immediately
+        if (recategorizeAll) {
+            recategorizeAll();
+        }
+
         setCategoryOpen(false);
     };
 
