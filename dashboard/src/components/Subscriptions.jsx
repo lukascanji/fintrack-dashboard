@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { GitMerge, X, Search } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 import SplitChargesModal from './SplitChargesModal';
+import ImportSubscriptionsModal from './ImportSubscriptionsModal';
 import { getTransactionId } from '../utils/transactionId';
 import { detectSubscriptions } from '../features/recurring/utils/recurringUtils';
 import { useTransactions } from '../context/TransactionContext';
@@ -66,6 +67,7 @@ export default function Subscriptions() {
     const [showMergePrompt, setShowMergePrompt] = useState(false);
     const [mergedName, setMergedName] = useState('');
     const [mergeTarget, setMergeTarget] = useState('new'); // 'new' or an existing merchantKey
+    const [importModalOpen, setImportModalOpen] = useState(false);
 
     // Search and filter state
     const [search, setSearch] = useState('');
@@ -640,6 +642,7 @@ export default function Subscriptions() {
                     onShowMergePrompt={() => setShowMergePrompt(true)}
                     onClearMergeSelection={() => setMergeSelected([])}
                     hasApprovedItems={allApprovedItems.length > 0}
+                    onImportClick={() => setImportModalOpen(true)}
                 />
             </div>
 
@@ -1051,6 +1054,37 @@ export default function Subscriptions() {
                     </div>
                 )
             }
+
+            {/* Import Subscriptions Modal */}
+            {importModalOpen && (
+                <ImportSubscriptionsModal
+                    isOpen={importModalOpen}
+                    onClose={() => setImportModalOpen(false)}
+                    transactions={transactions}
+                    onImport={(importData) => {
+                        const { manualRecurringEntries, chargeAssignmentUpdates, globalRenameUpdates } = importData;
+
+                        // Add manual recurring entries
+                        if (manualRecurringEntries.length > 0) {
+                            setManualRecurring(prev => {
+                                const existing = new Set(prev.map(m => m.merchantKey));
+                                const newItems = manualRecurringEntries.filter(m => !existing.has(m.merchantKey));
+                                return [...prev, ...newItems];
+                            });
+                        }
+
+                        // Update charge assignments
+                        if (Object.keys(chargeAssignmentUpdates).length > 0) {
+                            setChargeAssignments(prev => ({ ...prev, ...chargeAssignmentUpdates }));
+                        }
+
+                        // Update global renames
+                        if (Object.keys(globalRenameUpdates).length > 0) {
+                            setGlobalRenames(prev => ({ ...prev, ...globalRenameUpdates }));
+                        }
+                    }}
+                />
+            )}
         </div >
     );
 }
