@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { categorizeMerchant } from '../utils/categorize';
+import { applyRulesToTransactions } from '../utils/ruleEngine';
 
 const TransactionContext = createContext(null);
 
@@ -9,6 +10,7 @@ const CHARGE_ASSIGNMENTS_KEY = 'fintrack_charge_assignments';
 const APPROVED_KEY = 'fintrack_recurring_approved';
 const DENIED_KEY = 'fintrack_recurring_denied';
 const SPLITS_KEY = 'fintrack_merchant_splits';
+const SUBSCRIPTION_RULES_KEY = 'fintrack_subscription_rules';
 
 // Helper to serialize/deserialize dates
 function serializeTransactions(transactions) {
@@ -149,6 +151,13 @@ export function TransactionProvider({ children }) {
         } catch { return {}; }
     });
 
+    const [subscriptionRules, setSubscriptionRules] = useState(() => {
+        try {
+            const saved = localStorage.getItem(SUBSCRIPTION_RULES_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch { return {}; }
+    });
+
     // --- Persistence Effects ---
     useEffect(() => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeTransactions(transactions)));
@@ -214,14 +223,30 @@ export function TransactionProvider({ children }) {
         localStorage.setItem('fintrack_person_settlements', JSON.stringify(settlements));
     }, [settlements]);
 
+    useEffect(() => {
+        localStorage.setItem(SUBSCRIPTION_RULES_KEY, JSON.stringify(subscriptionRules));
+    }, [subscriptionRules]);
+
     // --- Actions ---
     const addTransactions = useCallback((newTransactions) => {
+        // Apply subscription rules to new transactions
+        const { chargeAssignments: ruleAssignments } = applyRulesToTransactions(
+            newTransactions,
+            { subscriptionRules, mergedSubscriptions },
+            chargeAssignments
+        );
+
+        // Update charge assignments if rules matched anything
+        if (Object.keys(ruleAssignments).length > 0) {
+            setChargeAssignments(prev => ({ ...prev, ...ruleAssignments }));
+        }
+
         setTransactions(prev => {
             const existingIds = new Set(prev.map(t => t.id));
             const unique = newTransactions.filter(t => !existingIds.has(t.id));
             return [...prev, ...unique];
         });
-    }, []);
+    }, [subscriptionRules, mergedSubscriptions, chargeAssignments]);
 
     const clearTransactions = useCallback(() => {
         setTransactions([]);
@@ -351,7 +376,10 @@ export function TransactionProvider({ children }) {
         setPeopleList,
 
         settlements,
-        setSettlements
+        setSettlements,
+
+        subscriptionRules,
+        setSubscriptionRules
     };
 
     return (

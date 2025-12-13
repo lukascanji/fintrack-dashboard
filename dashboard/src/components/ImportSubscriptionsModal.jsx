@@ -116,8 +116,11 @@ export default function ImportSubscriptionsModal({
 
         const importData = generateImportData(
             { matches: selectedMatches, stats: selectedStats },
-            parseResult.subscriptions
+            matchResult.parsedSubscriptions // Use the combined subscriptions
         );
+
+        // Include parsed subscriptions for rule generation
+        importData.parsedSubscriptions = matchResult.parsedSubscriptions;
 
         onImport(importData);
         handleClose();

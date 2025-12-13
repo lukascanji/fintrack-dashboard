@@ -3,6 +3,7 @@ import { GitMerge, X, Search } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 import SplitChargesModal from './SplitChargesModal';
 import ImportSubscriptionsModal from './ImportSubscriptionsModal';
+import { generateSubscriptionRules } from '../utils/ruleEngine';
 import { getTransactionId } from '../utils/transactionId';
 import { detectSubscriptions } from '../features/recurring/utils/recurringUtils';
 import { useTransactions } from '../context/TransactionContext';
@@ -55,6 +56,8 @@ export default function Subscriptions() {
         globalRenames,
         setGlobalRenames,
         setCustomNames,
+        subscriptionRules,
+        setSubscriptionRules,
     } = useTransactions();
 
     const subscriptions = useMemo(() => detectSubscriptions(transactions), [transactions]);
@@ -1062,7 +1065,7 @@ export default function Subscriptions() {
                     onClose={() => setImportModalOpen(false)}
                     transactions={transactions}
                     onImport={(importData) => {
-                        const { manualRecurringEntries, chargeAssignmentUpdates, globalRenameUpdates } = importData;
+                        const { manualRecurringEntries, chargeAssignmentUpdates, globalRenameUpdates, parsedSubscriptions } = importData;
 
                         // Add manual recurring entries
                         if (manualRecurringEntries.length > 0) {
@@ -1081,6 +1084,14 @@ export default function Subscriptions() {
                         // Update global renames
                         if (Object.keys(globalRenameUpdates).length > 0) {
                             setGlobalRenames(prev => ({ ...prev, ...globalRenameUpdates }));
+                        }
+
+                        // Generate and save subscription rules for future imports
+                        if (parsedSubscriptions && manualRecurringEntries.length > 0) {
+                            const newRules = generateSubscriptionRules(importData, parsedSubscriptions);
+                            if (Object.keys(newRules).length > 0) {
+                                setSubscriptionRules(prev => ({ ...prev, ...newRules }));
+                            }
                         }
                     }}
                 />
