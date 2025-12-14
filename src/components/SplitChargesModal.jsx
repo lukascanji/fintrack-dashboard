@@ -12,6 +12,8 @@ export default function SplitChargesModal({
     subscription,
     allSubscriptions,
     transactions,
+    globalRenames = {},
+    mergedSubscriptions = {},
     onCreateNewSubscription,
     onSave
 }) {
@@ -86,6 +88,22 @@ export default function SplitChargesModal({
         const others = allSubscriptions.filter(s => s.merchantKey !== subscription.merchantKey);
         return [...others, ...createdSubs];
     }, [allSubscriptions, subscription, createdSubs]);
+
+    // Helper to get effective display name (checks globalRenames, mergedSubscriptions, then falls back to merchant)
+    const getEffectiveName = (sub) => {
+        // Check globalRenames (with amount key first, then base key)
+        const amountKey = `${sub.merchantKey}-${sub.latestAmount?.toFixed(2)}`;
+        if (globalRenames[amountKey]?.displayName) return globalRenames[amountKey].displayName;
+        if (globalRenames[sub.merchantKey]?.displayName) return globalRenames[sub.merchantKey].displayName;
+
+        // Check mergedSubscriptions
+        if (mergedSubscriptions[sub.merchantKey]?.displayName) return mergedSubscriptions[sub.merchantKey].displayName;
+
+        // Check if item itself has displayName (manual recurring / splits)
+        if (sub.displayName) return sub.displayName;
+
+        return sub.merchant;
+    };
 
     // Early return AFTER hooks
     if (!isOpen || !subscription) return null;
@@ -243,6 +261,7 @@ export default function SplitChargesModal({
                                 clusterAssignedSub={clusterAssignedSub}
                                 subscription={subscription}
                                 otherSubscriptions={otherSubscriptions}
+                                getEffectiveName={getEffectiveName}
                                 clusterNewInput={clusterNewInput}
                                 clusterNewName={clusterNewName}
                                 onClusterNewInputChange={setClusterNewInput}
@@ -294,6 +313,7 @@ export default function SplitChargesModal({
                             charge={charge}
                             subscription={subscription}
                             otherSubscriptions={otherSubscriptions}
+                            getEffectiveName={getEffectiveName}
                             currentAssignment={assignments[charge.id]}
                             isShowingNewInput={showNewSubInput === charge.id}
                             newSubName={newSubName}

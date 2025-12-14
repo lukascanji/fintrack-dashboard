@@ -8,6 +8,7 @@ export default function ClusterPatternRow({
     clusterAssignedSub,
     subscription,
     otherSubscriptions,
+    getEffectiveName,
     clusterNewInput,
     clusterNewName,
     onClusterNewInputChange,
@@ -114,7 +115,7 @@ export default function ClusterPatternRow({
                         fontSize: '0.8rem',
                         fontWeight: 500
                     }}>
-                        → {clusterAssignedSub.displayName || clusterAssignedSub.merchant}
+                        → {getEffectiveName ? getEffectiveName(clusterAssignedSub) : (clusterAssignedSub.displayName || clusterAssignedSub.merchant)}
                     </span>
                     <button
                         onClick={() => onClearCluster(clusterIndex)}
@@ -155,13 +156,13 @@ export default function ClusterPatternRow({
                 >
                     <option value="">Assign all {cluster.count}...</option>
                     <option value={subscription.merchantKey}>
-                        Keep with {subscription.displayName || subscription.merchant}
+                        Keep with {getEffectiveName ? getEffectiveName(subscription) : (subscription.displayName || subscription.merchant)}
                     </option>
                     {otherSubscriptions.length > 0 && (
                         <optgroup label="Move to existing">
                             {otherSubscriptions.map(s => (
                                 <option key={s.merchantKey} value={s.merchantKey}>
-                                    {s.displayName || s.merchant}
+                                    {getEffectiveName ? getEffectiveName(s) : (s.displayName || s.merchant)}
                                 </option>
                             ))}
                         </optgroup>

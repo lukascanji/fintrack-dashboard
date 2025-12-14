@@ -32,19 +32,74 @@ export default function CalendarView() {
         transactions,
         personNames,
         globalRenames,
-        approvedItems
+        approvedItems,
+        manualRecurring,
+        mergedSubscriptions,
+        chargeAssignments,
+        splitSubscriptions
     } = useTransactions();
 
     // Alias for compatibility
     const approved = approvedItems;
     // ---------------------------------
 
-    // Get display info for merchant (apply global renames)
+    // Build effective names map (including splits and merges)
+    const effectiveNames = useMemo(() => {
+        const names = {};
+
+        // 1. Add manual recurring names (like splits)
+        manualRecurring.forEach(sub => {
+            if (sub.merchantKey && sub.displayName) {
+                names[sub.merchantKey] = sub.displayName;
+            }
+        });
+
+        // 2. Add merged subscription names
+        Object.entries(mergedSubscriptions || {}).forEach(([key, merge]) => {
+            if (merge.displayName) {
+                names[key] = merge.displayName;
+            }
+        });
+
+        // 3. Override with global renames if they exist
+        Object.entries(globalRenames).forEach(([key, value]) => {
+            if (value && value.displayName) {
+                names[key] = value.displayName;
+            }
+        });
+
+        return names;
+    }, [manualRecurring, mergedSubscriptions, globalRenames]);
+
+    // Get display info for merchant (apply global renames and split/merge names)
     const getDisplayMerchantInfo = (t) => {
+        // Import getTransactionId for charge assignment lookup
+        const txnId = t.id || `${t.date?.toISOString?.() || t.date}-${t.description}-${t.amount || t.debit || t.credit}`;
+
+        // 1. Check if this transaction is assigned to a different subscription (split/merge)
+        const assignedTo = chargeAssignments[txnId];
+        if (assignedTo && effectiveNames[assignedTo]) {
+            return {
+                displayName: effectiveNames[assignedTo],
+                originalName: t.description,
+                isRenamed: true
+            };
+        }
+
         const merchantKey = getMerchantKey(t.description);
         const txnAmount = Math.abs(t.amount || t.debit || t.credit || 0).toFixed(2);
         const amountKey = `${merchantKey}-${txnAmount}`;
 
+        // 2. Check effective names (includes manual recurring and merges)
+        if (effectiveNames[merchantKey]) {
+            return {
+                displayName: effectiveNames[merchantKey],
+                originalName: t.description,
+                isRenamed: true
+            };
+        }
+
+        // 3. Check global renames with amount key
         if (globalRenames[amountKey]?.displayName) {
             return {
                 displayName: globalRenames[amountKey].displayName,
@@ -60,7 +115,7 @@ export default function CalendarView() {
             };
         }
 
-        // Fallback search by originalMerchant + amount
+        // 4. Fallback search by originalMerchant + amount
         for (const [key, rename] of Object.entries(globalRenames)) {
             if (rename.originalMerchant && rename.amount) {
                 const renameOrigKey = getMerchantKey(rename.originalMerchant);
@@ -102,19 +157,132 @@ export default function CalendarView() {
         const endDate = new Date(currentYear, currentMonth + 3, 0);
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-        const approvedSubs = subscriptions.filter(sub => approved.includes(sub.merchantKey));
+        // --- Build combined list of all projectable subscriptions ---
+        const allProjectableSubs = [];
+        const processedKeys = new Set();
 
-        approvedSubs.forEach(sub => {
+        // 1. Add approved detected subscriptions
+        subscriptions
+            .filter(sub => approved.includes(sub.merchantKey))
+            .forEach(sub => {
+                // Skip if this subscription was merged INTO something else
+                const wasSourceOfMerge = Object.values(mergedSubscriptions || {})
+                    .some(m => m.mergedFrom?.includes(sub.merchantKey));
+                if (wasSourceOfMerge) return;
+
+                // Skip if this subscription was SPLIT into children
+                const wasSplit = splitSubscriptions && splitSubscriptions[sub.merchantKey];
+                if (wasSplit) return;
+
+                processedKeys.add(sub.merchantKey);
+                allProjectableSubs.push({
+                    merchantKey: sub.merchantKey,
+                    merchant: effectiveNames[sub.merchantKey] || sub.merchant,
+                    latestAmount: sub.latestAmount,
+                    frequency: sub.frequency,
+                    nextDate: sub.nextDate
+                });
+            });
+
+        // 2. Add manual recurring items (splits) - calculate timing from assigned transactions
+        manualRecurring.forEach(manual => {
+            if (processedKeys.has(manual.merchantKey)) return;
+            processedKeys.add(manual.merchantKey);
+
+            // Find transactions assigned to this manual subscription
+            const assignedTxnIds = Object.entries(chargeAssignments)
+                .filter(([_, targetKey]) => targetKey === manual.merchantKey)
+                .map(([txnId]) => txnId);
+
+            // Find actual transaction objects for these IDs
+            const assignedTxns = transactions.filter(t => {
+                const tId = t.id || `txn_${t.date?.toISOString?.()?.split('T')[0] || t.date}_${Math.abs(t.debit || t.credit || 0).toFixed(2)}_${(t.description || '').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 20)}`;
+                return assignedTxnIds.some(aid => aid === tId || aid.includes(tId.split('_').slice(-1)[0]));
+            });
+
+            // Calculate nextDate from latest assigned transaction + 1 month
+            let nextDate;
+            let latestAmount = manual.latestAmount || manual.amount || 0;
+            let frequency = manual.frequency || 'Monthly';
+
+            if (assignedTxns.length > 0) {
+                // Sort by date descending
+                const sortedTxns = assignedTxns.sort((a, b) => new Date(b.date) - new Date(a.date));
+                const lastTxn = sortedTxns[0];
+                const lastDate = new Date(lastTxn.date);
+
+                // Next date is 1 month after last transaction
+                nextDate = new Date(lastDate);
+                nextDate.setMonth(nextDate.getMonth() + 1);
+
+                // Use actual amount from transaction
+                latestAmount = Math.abs(lastTxn.debit || lastTxn.credit || lastTxn.amount || 0);
+
+                // Detect frequency from transaction pattern (if 2+ transactions)
+                if (sortedTxns.length >= 2) {
+                    const daysBetween = Math.abs((new Date(sortedTxns[0].date) - new Date(sortedTxns[1].date)) / (1000 * 60 * 60 * 24));
+                    if (daysBetween <= 10) frequency = 'Weekly';
+                    else if (daysBetween <= 20) frequency = 'Bi-Weekly';
+                    else if (daysBetween <= 45) frequency = 'Monthly';
+                    else if (daysBetween <= 120) frequency = 'Quarterly';
+                    else frequency = 'Yearly';
+                }
+            } else {
+                // Fallback: next month from today
+                nextDate = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, todayStart.getDate());
+            }
+
+            allProjectableSubs.push({
+                merchantKey: manual.merchantKey,
+                merchant: manual.displayName || manual.merchant,
+                latestAmount: latestAmount,
+                frequency: frequency,
+                nextDate: nextDate
+            });
+        });
+
+        // 3. Add merged subscriptions - use the target's info
+        Object.entries(mergedSubscriptions || {}).forEach(([mergedKey, merge]) => {
+            if (processedKeys.has(mergedKey)) return;
+            processedKeys.add(mergedKey);
+
+            // Find the base subscription for timing info (first merged source that exists)
+            const baseSub = subscriptions.find(s =>
+                merge.mergedFrom?.includes(s.merchantKey) || s.merchantKey === mergedKey
+            );
+
+            if (baseSub) {
+                // Calculate combined amount from all merged sources
+                const totalAmount = merge.mergedFrom
+                    ?.map(srcKey => subscriptions.find(s => s.merchantKey === srcKey)?.latestAmount || 0)
+                    .reduce((sum, amt) => sum + amt, 0) || baseSub.latestAmount;
+
+                allProjectableSubs.push({
+                    merchantKey: mergedKey,
+                    merchant: merge.displayName,
+                    latestAmount: totalAmount,
+                    frequency: baseSub.frequency,
+                    nextDate: baseSub.nextDate
+                });
+            }
+        });
+
+        // --- Generate renewals from combined list ---
+        allProjectableSubs.forEach(sub => {
             let nextDate = new Date(sub.nextDate);
+            const displayName = sub.merchant;
+
             while (nextDate <= endDate) {
                 if (nextDate >= todayStart) {
                     const key = nextDate.toDateString();
                     if (!renewals[key]) renewals[key] = [];
                     renewals[key].push({
-                        merchant: sub.merchant,
+                        merchant: displayName,
+                        merchantKey: sub.merchantKey,
                         amount: sub.latestAmount,
                         frequency: sub.frequency,
-                        isProjected: true
+                        isProjected: true,
+                        isRenamed: effectiveNames[sub.merchantKey] !== undefined
                     });
                 }
 
@@ -126,8 +294,9 @@ export default function CalendarView() {
                 else break;
             }
         });
+
         return renewals;
-    }, [subscriptions, approved, currentYear, currentMonth, today]);
+    }, [subscriptions, approved, currentYear, currentMonth, today, effectiveNames, manualRecurring, mergedSubscriptions, splitSubscriptions, chargeAssignments, transactions]);
 
     const daysInMonth = getDaysInMonth(currentYear, currentMonth);
     const firstDay = getFirstDayOfMonth(currentYear, currentMonth);

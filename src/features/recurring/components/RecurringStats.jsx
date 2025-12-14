@@ -1,5 +1,5 @@
 import React from 'react';
-import { GitMerge } from 'lucide-react';
+import { GitMerge, Upload } from 'lucide-react';
 
 export default function RecurringStats({
     monthlyTotal,
@@ -8,7 +8,8 @@ export default function RecurringStats({
     mergeSelectedCount,
     onShowMergePrompt,
     onClearMergeSelection,
-    hasApprovedItems
+    hasApprovedItems,
+    onImportClick
 }) {
     return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -33,15 +34,39 @@ export default function RecurringStats({
                     </button>
                 )}
                 {hasApprovedItems && (
-                    <div style={{
-                        padding: '6px 12px',
-                        background: 'var(--gradient-primary)',
-                        borderRadius: '20px',
-                        fontSize: '0.875rem',
-                        fontWeight: '600'
-                    }}>
-                        ~${monthlyTotal.toFixed(0)}/mo
-                    </div>
+                    <>
+                        {onImportClick && (
+                            <button
+                                onClick={onImportClick}
+                                title="Import subscription clarifications from CSV"
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 12px',
+                                    background: 'rgba(34, 197, 94, 0.15)',
+                                    border: '1px solid rgba(34, 197, 94, 0.3)',
+                                    borderRadius: '20px',
+                                    color: 'var(--accent-success)',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                <Upload size={14} />
+                                Import CSV
+                            </button>
+                        )}
+                        <div style={{
+                            padding: '6px 12px',
+                            background: 'var(--gradient-primary)',
+                            borderRadius: '20px',
+                            fontSize: '0.875rem',
+                            fontWeight: '600'
+                        }}>
+                            ~${monthlyTotal.toFixed(0)}/mo
+                        </div>
+                    </>
                 )}
                 {/* Merge button when items selected */}
                 {mergeSelectedCount >= 2 && (

@@ -1,8 +1,7 @@
 .recurringItem {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px;
+    flex-direction: column;
+    /* Changed from row for expansion */
     background: rgba(255, 255, 255, 0.03);
     border-radius: 8px;
     border: 1px solid var(--border-color);
@@ -10,19 +9,28 @@
     cursor: pointer;
     position: relative;
     transition: background 0.15s;
-    z-index: 1;
+    overflow: visible;
+    /* Changed from hidden to allow dropdowns to extend outside */
 }
 
-/* Elevate item when any dropdown is open so it renders above siblings */
-.recurringItem.hasOpenDropdown {
-    z-index: 9999;
-    isolation: isolate;
+/* New wrapper for the top summary row */
+.summaryRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .recurringItem.expanded {
     background: rgba(99, 102, 241, 0.1);
-    border-radius: 8px 8px 0 0;
+    border-radius: 8px;
+    /* Maintain radius */
     border-bottom: none;
+    /* Bottom border handled by expansion? or keep it? */
+    border: 1px solid var(--accent-primary);
+    /* Highlight border when expanded? */
 }
 
 .leftSection {
@@ -172,13 +180,125 @@
     background: rgba(99, 102, 241, 0.2);
 }
 
+/* Expanded View */
+/* Expanded View */
 .expandedContent {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--border-color);
-    border-top: none;
-    border-radius: 0 0 8px 8px;
-    padding: 16px;
-    margin-top: -1px;
+    background: linear-gradient(180deg, rgba(30, 30, 35, 0.4) 0%, rgba(15, 15, 20, 0.6) 100%);
+    /* border-top: 1px solid var(--accent-primary);  Optional separator */
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 24px;
     position: relative;
     z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    box-shadow: inset 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Stats Row */
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.statCard {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.statCard:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+}
+
+.statLabel {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.statValue {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.statSubtext {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* Content Grid */
+.contentGrid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+}
+
+@media (max-width: 900px) {
+    .contentGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sectionTitle {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chartContainer {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    height: 300px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.historyContainer {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.scrollableHistory {
+    overflow-y: auto;
+    max-height: 250px;
+}
+
+/* Custom Scrollbar for History */
+.scrollableHistory::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollableHistory::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.scrollableHistory::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
 }

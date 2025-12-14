@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { LayoutDashboard, Upload, Receipt, Settings, Wallet, RefreshCw, Trash2, CalendarDays, Download, Users } from 'lucide-react';
+import { LayoutDashboard, Upload, Receipt, Settings, Wallet, RefreshCw, Trash2, CalendarDays, Download, Users, FileText } from 'lucide-react';
 import FileUpload from './components/FileUpload';
 import KPICards from './components/KPICards';
 import SpendingChart from './components/SpendingChart';
@@ -10,6 +10,7 @@ import TransactionTable from './components/TransactionTable';
 import Subscriptions from './components/Subscriptions';
 import CalendarView from './components/CalendarView';
 import People from './components/People';
+import Rules from './components/Rules';
 import DateRangeFilter, { filterByDateRange } from './components/DateRangeFilter';
 import { calculateStats } from './utils/stats';
 import { categorizeMerchant } from './utils/categorize';
@@ -126,6 +127,13 @@ function App() {
           >
             <Users size={20} />
             People
+          </div>
+          <div
+            className={`nav-item ${activeView === 'rules' ? 'active' : ''}`}
+            onClick={() => setActiveView('rules')}
+          >
+            <FileText size={20} />
+            Rules
           </div>
         </nav>
 
@@ -313,6 +321,15 @@ function App() {
             ) : (
               <People />
             )}
+          </>
+        )}
+
+        {activeView === 'rules' && (
+          <>
+            <div className="section-header">
+              <h1 className="section-title">Rules</h1>
+            </div>
+            <Rules />
           </>
         )}
       </main>

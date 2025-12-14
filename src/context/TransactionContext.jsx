@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { categorizeMerchant } from '../utils/categorize';
+import { applyRulesToTransactions } from '../utils/ruleEngine';
 
 const TransactionContext = createContext(null);
 
@@ -9,6 +10,7 @@ const CHARGE_ASSIGNMENTS_KEY = 'fintrack_charge_assignments';
 const APPROVED_KEY = 'fintrack_recurring_approved';
 const DENIED_KEY = 'fintrack_recurring_denied';
 const SPLITS_KEY = 'fintrack_merchant_splits';
+const SUBSCRIPTION_RULES_KEY = 'fintrack_subscription_rules';
 
 // Helper to serialize/deserialize dates
 function serializeTransactions(transactions) {
@@ -86,6 +88,13 @@ export function TransactionProvider({ children }) {
         } catch { return {}; }
     });
 
+    const [splitSubscriptions, setSplitSubscriptions] = useState(() => {
+        try {
+            const saved = localStorage.getItem('fintrack_split_subscriptions');
+            return saved ? JSON.parse(saved) : {};
+        } catch { return {}; }
+    });
+
     const [emails, setEmails] = useState(() => {
         try {
             const saved = localStorage.getItem('fintrack_subscription_emails');
@@ -142,6 +151,13 @@ export function TransactionProvider({ children }) {
         } catch { return {}; }
     });
 
+    const [subscriptionRules, setSubscriptionRules] = useState(() => {
+        try {
+            const saved = localStorage.getItem(SUBSCRIPTION_RULES_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch { return {}; }
+    });
+
     // --- Persistence Effects ---
     useEffect(() => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeTransactions(transactions)));
@@ -170,6 +186,10 @@ export function TransactionProvider({ children }) {
     useEffect(() => {
         localStorage.setItem('fintrack_merged_subscriptions', JSON.stringify(mergedSubscriptions));
     }, [mergedSubscriptions]);
+
+    useEffect(() => {
+        localStorage.setItem('fintrack_split_subscriptions', JSON.stringify(splitSubscriptions));
+    }, [splitSubscriptions]);
 
     useEffect(() => {
         localStorage.setItem('fintrack_subscription_emails', JSON.stringify(emails));
@@ -203,14 +223,30 @@ export function TransactionProvider({ children }) {
         localStorage.setItem('fintrack_person_settlements', JSON.stringify(settlements));
     }, [settlements]);
 
+    useEffect(() => {
+        localStorage.setItem(SUBSCRIPTION_RULES_KEY, JSON.stringify(subscriptionRules));
+    }, [subscriptionRules]);
+
     // --- Actions ---
     const addTransactions = useCallback((newTransactions) => {
+        // Apply subscription rules to new transactions
+        const { chargeAssignments: ruleAssignments } = applyRulesToTransactions(
+            newTransactions,
+            { subscriptionRules, mergedSubscriptions },
+            chargeAssignments
+        );
+
+        // Update charge assignments if rules matched anything
+        if (Object.keys(ruleAssignments).length > 0) {
+            setChargeAssignments(prev => ({ ...prev, ...ruleAssignments }));
+        }
+
         setTransactions(prev => {
             const existingIds = new Set(prev.map(t => t.id));
             const unique = newTransactions.filter(t => !existingIds.has(t.id));
             return [...prev, ...unique];
         });
-    }, []);
+    }, [subscriptionRules, mergedSubscriptions, chargeAssignments]);
 
     const clearTransactions = useCallback(() => {
         setTransactions([]);
@@ -240,12 +276,62 @@ export function TransactionProvider({ children }) {
         return () => window.removeEventListener('storage', handleStorageChange);
     }, []);
 
+    const deleteRecurringItem = useCallback((merchantKey) => {
+        // 1. Remove from manual recurring
+        setManualRecurring(prev => {
+            const updated = prev.filter(m => m.merchantKey !== merchantKey);
+            localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(updated));
+            return updated;
+        });
+
+        // 2. Remove from approved items
+        setApprovedItems(prev => {
+            const updated = prev.filter(k => k !== merchantKey);
+            localStorage.setItem(APPROVED_KEY, JSON.stringify(updated));
+            return updated;
+        });
+
+        // 3. Remove from merged subscriptions
+        setMergedSubscriptions(prev => {
+            const updated = { ...prev };
+            delete updated[merchantKey];
+            localStorage.setItem('fintrack_merged_subscriptions', JSON.stringify(updated));
+            return updated;
+        });
+
+        // 4. Clear charge assignments
+        setChargeAssignments(prev => {
+            const updated = { ...prev };
+            let changed = false;
+            Object.keys(updated).forEach(txnId => {
+                if (updated[txnId] === merchantKey) {
+                    delete updated[txnId];
+                    changed = true;
+                }
+            });
+            if (changed) {
+                localStorage.setItem(CHARGE_ASSIGNMENTS_KEY, JSON.stringify(updated));
+            }
+            return changed ? updated : prev;
+        });
+
+        // 5. Clear Renames/Category overrides
+        setGlobalRenames(prev => {
+            const updated = { ...prev };
+            delete updated[merchantKey];
+            localStorage.setItem('fintrack_global_renames', JSON.stringify(updated));
+            return updated;
+        });
+    }, []);
+
     const value = {
         transactions,
         setTransactions,
         addTransactions,
         clearTransactions,
         recategorizeAll,
+        deleteRecurringItem, // Exported action
+
 
         approvedItems,
         setApprovedItems,
@@ -264,6 +350,9 @@ export function TransactionProvider({ children }) {
 
         mergedSubscriptions,
         setMergedSubscriptions,
+
+        splitSubscriptions,
+        setSplitSubscriptions,
 
         emails,
         setEmails,
@@ -287,7 +376,10 @@ export function TransactionProvider({ children }) {
         setPeopleList,
 
         settlements,
-        setSettlements
+        setSettlements,
+
+        subscriptionRules,
+        setSubscriptionRules
     };
 
     return (
