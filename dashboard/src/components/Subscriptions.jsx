@@ -342,8 +342,13 @@ export default function Subscriptions() {
                 };
             }).filter(Boolean);
 
+        // Get keys already processed from detected subscriptions
+        const processedApprovedKeys = new Set(processedApproved.map(item => item.merchantKey));
+
+        // Manual items: include those NOT already in processedApproved (detected subscriptions)
+        // This allows manually added items to show, even if auto-approved
         const manualItems = manualRecurring
-            .filter(m => !approved.includes(m.merchantKey))
+            .filter(m => !processedApprovedKeys.has(m.merchantKey))
             .map(m => {
                 const assignedTxnIds = new Set(assignmentsByTarget[m.merchantKey] || []);
                 const assignedTransactions = transactions.filter(t =>

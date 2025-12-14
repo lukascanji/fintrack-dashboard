@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { CreditCard, Building2, Users, Plus, Check, X, Edit2, RefreshCw } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { CreditCard, Building2, Users, Plus, Check, X, Edit2, RefreshCw, Loader } from 'lucide-react';
 import { ALL_CATEGORIES } from '../../../utils/constants';
 import { getMerchantKey } from '../../../utils/categorize';
+import Dropdown from '../../../components/Dropdown';
 
 export default function TransactionRow({
     transaction: t,
@@ -14,12 +15,15 @@ export default function TransactionRow({
     onCategoryChange,
     onAddToRecurring,
     isRecurring,
+    isAddingToRecurring,
     chargeAssignment,
     effectiveName
 }) {
     const [categoryEditOpen, setCategoryEditOpen] = useState(false);
     const [nameSelectorOpen, setNameSelectorOpen] = useState(false);
     const [newNameInput, setNewNameInput] = useState('');
+    const categoryTriggerRef = useRef(null);
+    const personTriggerRef = useRef(null);
 
     const getDisplayMerchantInfo = (txn) => {
         // 1. If effective name passed from parent (from recurring setup), use it
@@ -74,8 +78,9 @@ export default function TransactionRow({
                 </span>
             </td>
             <td>{t.merchant}</td>
-            <td style={{ position: 'relative' }}>
+            <td>
                 <span
+                    ref={categoryTriggerRef}
                     className={`category-badge ${t.category === 'GAMBLING' ? 'gambling' : ''} ${t.category === 'FEES' ? 'fees' : ''}`}
                     onClick={() => setCategoryEditOpen(!categoryEditOpen)}
                     style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
@@ -84,56 +89,45 @@ export default function TransactionRow({
                     <Edit2 size={10} style={{ opacity: 0.5 }} />
                 </span>
 
-                {/* Category edit dropdown */}
-                {categoryEditOpen && (
-                    <div
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: 0,
-                            zIndex: 100,
-                            background: 'var(--bg-secondary)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '8px',
-                            padding: '8px',
-                            minWidth: '150px',
-                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                        }}
-                    >
-                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                            Change Category
-                        </div>
-                        <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                            {ALL_CATEGORIES.map((cat) => (
-                                <div
-                                    key={cat}
-                                    onClick={() => {
-                                        onCategoryChange(cat);
-                                        setCategoryEditOpen(false);
-                                    }}
-                                    style={{
-                                        padding: '6px 10px',
-                                        background: cat === t.category ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                        borderRadius: '4px',
-                                        marginBottom: '2px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.75rem',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between'
-                                    }}
-                                >
-                                    {cat}
-                                    {cat === t.category && <Check size={12} color="var(--accent-success)" />}
-                                </div>
-                            ))}
-                        </div>
-                        <div style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid var(--border-color)' }}>
-                            Rule will apply to future imports
-                        </div>
+                {/* Category edit dropdown - Portal based */}
+                <Dropdown
+                    isOpen={categoryEditOpen}
+                    onClose={() => setCategoryEditOpen(false)}
+                    triggerRef={categoryTriggerRef}
+                    minWidth={150}
+                >
+                    <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        Change Category
                     </div>
-                )}
+                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                        {ALL_CATEGORIES.map((cat) => (
+                            <div
+                                key={cat}
+                                onClick={() => {
+                                    onCategoryChange(cat);
+                                    setCategoryEditOpen(false);
+                                }}
+                                style={{
+                                    padding: '6px 10px',
+                                    background: cat === t.category ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                    borderRadius: '4px',
+                                    marginBottom: '2px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}
+                            >
+                                {cat}
+                                {cat === t.category && <Check size={12} color="var(--accent-success)" />}
+                            </div>
+                        ))}
+                    </div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid var(--border-color)' }}>
+                        Rule will apply to future imports
+                    </div>
+                </Dropdown>
             </td>
             <td style={{
                 textAlign: 'right',
@@ -154,9 +148,10 @@ export default function TransactionRow({
                     {accountType}
                 </span>
             </td>
-            <td style={{ position: 'relative' }}>
+            <td>
                 {personName ? (
                     <span
+                        ref={personTriggerRef}
                         onClick={() => setNameSelectorOpen(!nameSelectorOpen)}
                         style={{
                             display: 'inline-flex',
@@ -175,6 +170,7 @@ export default function TransactionRow({
                     </span>
                 ) : (
                     <button
+                        ref={personTriggerRef}
                         onClick={() => setNameSelectorOpen(!nameSelectorOpen)}
                         style={{
                             display: 'inline-flex',
@@ -195,141 +191,138 @@ export default function TransactionRow({
                     </button>
                 )}
 
-                {/* Name selector dropdown */}
-                {nameSelectorOpen && (
-                    <div
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                            position: 'absolute',
-                            top: '100%',
-                            right: 0,
-                            zIndex: 100,
-                            background: 'var(--bg-secondary)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '8px',
-                            padding: '8px',
-                            minWidth: '180px',
-                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                        }}
-                    >
-                        <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                            Assign to Person
-                        </div>
-
-                        {people && people.length > 0 && (
-                            <div style={{ marginBottom: '6px' }}>
-                                {people.map((name, j) => (
-                                    <div
-                                        key={j}
-                                        onClick={() => { onAssignPerson(name); setNameSelectorOpen(false); }}
-                                        style={{
-                                            padding: '4px 8px',
-                                            background: personName === name ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                            borderRadius: '4px',
-                                            marginBottom: '2px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px'
-                                        }}
-                                    >
-                                        <Users size={10} color="var(--accent-primary)" />
-                                        {name}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                            <input
-                                type="text"
-                                value={newNameInput}
-                                onChange={(e) => setNewNameInput(e.target.value)}
-                                placeholder="New name..."
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && newNameInput.trim()) {
-                                        onAssignPerson(newNameInput.trim());
-                                        setNameSelectorOpen(false);
-                                    }
-                                    if (e.key === 'Escape') setNameSelectorOpen(false);
-                                }}
-                                style={{
-                                    flex: 1,
-                                    padding: '4px 8px',
-                                    background: 'rgba(255, 255, 255, 0.1)',
-                                    border: '1px solid var(--border-color)',
-                                    borderRadius: '4px',
-                                    color: 'white',
-                                    fontSize: '0.75rem'
-                                }}
-                            />
-                            <button
-                                onClick={() => {
-                                    if (newNameInput.trim()) {
-                                        onAssignPerson(newNameInput.trim());
-                                        setNameSelectorOpen(false);
-                                    }
-                                }}
-                                disabled={!newNameInput.trim()}
-                                style={{
-                                    padding: '4px 8px',
-                                    background: newNameInput.trim() ? 'var(--accent-success)' : 'rgba(255, 255, 255, 0.1)',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    cursor: newNameInput.trim() ? 'pointer' : 'default',
-                                    color: 'white'
-                                }}
-                            >
-                                <Check size={12} />
-                            </button>
-                        </div>
-
-                        {personName && (
-                            <button
-                                onClick={() => { onRemovePerson(); setNameSelectorOpen(false); }}
-                                style={{
-                                    marginTop: '6px',
-                                    padding: '2px 6px',
-                                    background: 'none',
-                                    border: 'none',
-                                    color: 'var(--accent-danger)',
-                                    fontSize: '0.65rem',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}
-                            >
-                                <X size={10} /> Remove
-                            </button>
-                        )}
+                {/* Name selector dropdown - Portal based */}
+                <Dropdown
+                    isOpen={nameSelectorOpen}
+                    onClose={() => setNameSelectorOpen(false)}
+                    triggerRef={personTriggerRef}
+                    minWidth={180}
+                    align="right"
+                >
+                    <div style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        Assign to Person
                     </div>
-                )}
+
+                    {people && people.length > 0 && (
+                        <div style={{ marginBottom: '6px' }}>
+                            {people.map((name, j) => (
+                                <div
+                                    key={j}
+                                    onClick={() => { onAssignPerson(name); setNameSelectorOpen(false); }}
+                                    style={{
+                                        padding: '4px 8px',
+                                        background: personName === name ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                        borderRadius: '4px',
+                                        marginBottom: '2px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    <Users size={10} color="var(--accent-primary)" />
+                                    {name}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                        <input
+                            type="text"
+                            value={newNameInput}
+                            onChange={(e) => setNewNameInput(e.target.value)}
+                            placeholder="New name..."
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && newNameInput.trim()) {
+                                    onAssignPerson(newNameInput.trim());
+                                    setNameSelectorOpen(false);
+                                }
+                                if (e.key === 'Escape') setNameSelectorOpen(false);
+                            }}
+                            style={{
+                                flex: 1,
+                                padding: '4px 8px',
+                                background: 'rgba(255, 255, 255, 0.1)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '4px',
+                                color: 'white',
+                                fontSize: '0.75rem'
+                            }}
+                        />
+                        <button
+                            onClick={() => {
+                                if (newNameInput.trim()) {
+                                    onAssignPerson(newNameInput.trim());
+                                    setNameSelectorOpen(false);
+                                }
+                            }}
+                            disabled={!newNameInput.trim()}
+                            style={{
+                                padding: '4px 8px',
+                                background: newNameInput.trim() ? 'var(--accent-success)' : 'rgba(255, 255, 255, 0.1)',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: newNameInput.trim() ? 'pointer' : 'default',
+                                color: 'white'
+                            }}
+                        >
+                            <Check size={12} />
+                        </button>
+                    </div>
+
+                    {personName && (
+                        <button
+                            onClick={() => { onRemovePerson(); setNameSelectorOpen(false); }}
+                            style={{
+                                marginTop: '6px',
+                                padding: '2px 6px',
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--accent-danger)',
+                                fontSize: '0.65rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            <X size={10} /> Remove
+                        </button>
+                    )}
+                </Dropdown>
             </td>
             <td style={{ padding: '4px' }}>
                 <button
-                    onClick={() => !isRecurring && onAddToRecurring()}
-                    title={isRecurring ? "Already in Recurring" : "Add Single to Recurring"}
+                    onClick={() => !isRecurring && !isAddingToRecurring && onAddToRecurring()}
+                    title={isRecurring ? "Already in Recurring" : isAddingToRecurring ? "Adding..." : "Add to Recurring"}
+                    disabled={isAddingToRecurring}
                     style={{
                         padding: '4px 6px',
                         background: isRecurring
                             ? 'rgba(34, 197, 94, 0.3)'
-                            : 'rgba(99, 102, 241, 0.2)',
+                            : isAddingToRecurring
+                                ? 'rgba(99, 102, 241, 0.4)'
+                                : 'rgba(99, 102, 241, 0.2)',
                         border: 'none',
                         borderRadius: '4px',
                         color: isRecurring
                             ? 'var(--accent-success)'
                             : 'var(--accent-primary)',
-                        cursor: isRecurring ? 'default' : 'pointer',
+                        cursor: isRecurring || isAddingToRecurring ? 'default' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '2px',
                         fontSize: '0.65rem',
-                        opacity: isRecurring ? 1 : 0.7
+                        opacity: isRecurring ? 1 : isAddingToRecurring ? 0.8 : 0.7
                     }}
                 >
-                    <RefreshCw size={10} />
+                    {isAddingToRecurring ? (
+                        <Loader size={10} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                    ) : (
+                        <RefreshCw size={10} />
+                    )}
                     {isRecurring && <Check size={8} />}
                 </button>
             </td>

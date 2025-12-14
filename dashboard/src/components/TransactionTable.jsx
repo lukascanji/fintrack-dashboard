@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, ChevronDown, ChevronUp, Plus, Calendar } from 'lucide-react';
 import { filterByDateRange, PRESETS as DATE_PRESETS } from './DateRangeFilter';
 import { saveCategoryRule, getMerchantKey } from '../utils/categorize';
@@ -7,6 +7,7 @@ import { useTransactions } from '../context/TransactionContext';
 import { getTransactionId } from '../utils/transactionId';
 import TransactionRow from '../features/transactions/components/TransactionRow';
 import { ALL_CATEGORIES } from '../utils/constants';
+import DuplicateRecurringModal from './DuplicateRecurringModal';
 
 const NAMES_STORAGE_KEY = 'fintrack_person_names';
 const PEOPLE_LIST_KEY = 'fintrack_people_list';
@@ -22,6 +23,7 @@ export default function TransactionTable({ showToast }) {
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [accountFilter, setAccountFilter] = useState('all');
     const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'spending', 'income'
+    const [recurringFilter, setRecurringFilter] = useState('all'); // 'all', 'recurring', 'one-time'
     const [dateRange, setDateRange] = useState('all');
     const [displayCount, setDisplayCount] = useState(50);
     const [forceRefresh, setForceRefresh] = useState(0);
@@ -34,11 +36,17 @@ export default function TransactionTable({ showToast }) {
         globalRenames,
         approvedItems, setApprovedItems,
         transactions, recategorizeAll,
-        chargeAssignments,
-        manualRecurring,
+        chargeAssignments, setChargeAssignments,
+        manualRecurring, setManualRecurring,
         mergedSubscriptions,
-        categoryOverrides, setCategoryOverrides
+        categoryOverrides, setCategoryOverrides,
+        subscriptionRules, setSubscriptionRules
     } = useTransactions();
+
+    // --- Add to Recurring State ---
+    const [isAddingRecurring, setIsAddingRecurring] = useState(null); // txnId of item being added
+    const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+    const [duplicateInfo, setDuplicateInfo] = useState({ existing: null, newTxn: null });
 
     // Aliases for compatibility
     const onRecategorize = recategorizeAll;
@@ -138,40 +146,111 @@ export default function TransactionTable({ showToast }) {
         setNameSelectorOpen(null);
     };
 
-    // Add transaction to manual recurring list
-    const addToRecurring = (txn) => {
-        try {
-            const existing = JSON.parse(localStorage.getItem(MANUAL_RECURRING_KEY) || '[]');
-            const merchantKey = getMerchantKey(txn.merchant);
+    // Check if a transaction already exists in recurring
+    const findExistingRecurring = useCallback((txn) => {
+        // Use description for consistent key derivation (matches isRecurring() check)
+        const merchantKey = getMerchantKey(txn.description);
+        return manualRecurring.find(item => item.merchantKey === merchantKey);
+    }, [manualRecurring]);
 
-            // Check if already added
-            if (existing.some(item => item.merchantKey === merchantKey)) {
-                return; // Already in recurring
+    // Core function to add transaction to recurring (called after duplicate check)
+    const executeAddToRecurring = useCallback((txn, forceAdd = false) => {
+        const txnId = getTransactionId(txn);
+        setIsAddingRecurring(txnId);
+
+        try {
+            // 1. Derive key from description (consistent with isRecurring)
+            const merchantKey = getMerchantKey(txn.description);
+
+            // 2. Check if already exists (unless forcing add)
+            const existingItem = findExistingRecurring(txn);
+            if (existingItem && !forceAdd) {
+                // Show duplicate modal
+                setDuplicateInfo({ existing: existingItem, newTxn: txn });
+                setDuplicateModalOpen(true);
+                setIsAddingRecurring(null);
+                return;
             }
 
+            // 3. Create new entry
             const newEntry = {
-                merchantKey: merchantKey,
+                merchantKey,
                 merchant: txn.merchant,
                 description: txn.description,
                 amount: txn.debit || txn.credit || txn.amount || 0,
                 category: txn.category,
                 dateAdded: new Date().toISOString(),
-                sourceTransactionId: txn.id
+                sourceTransactionId: txnId
             };
 
-            existing.push(newEntry);
-            localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(existing));
+            // 4. Update React state AND localStorage
+            setManualRecurring(prev => {
+                // Avoid duplicates if forcing
+                if (forceAdd) {
+                    const filtered = prev.filter(item => item.merchantKey !== merchantKey);
+                    return [...filtered, newEntry];
+                }
+                return [...prev, newEntry];
+            });
 
-            // Also auto-approve it
-            const approved = JSON.parse(localStorage.getItem('fintrack_recurring_approved') || '[]');
-            if (!approved.includes(merchantKey)) {
-                approved.push(merchantKey);
-                localStorage.setItem('fintrack_recurring_approved', JSON.stringify(approved));
+            // 5. Auto-approve
+            setApprovedItems(prev => {
+                if (!prev.includes(merchantKey)) {
+                    return [...prev, merchantKey];
+                }
+                return prev;
+            });
+
+            // 6. Create charge assignment linking transaction to recurring item
+            setChargeAssignments(prev => ({
+                ...prev,
+                [txnId]: merchantKey
+            }));
+
+            // 7. Register subscription rule for future auto-matching
+            setSubscriptionRules(prev => ({
+                ...prev,
+                [merchantKey]: {
+                    merchantKey,
+                    patterns: [txn.description.toUpperCase()],
+                    createdAt: new Date().toISOString()
+                }
+            }));
+
+            // 8. User feedback
+            if (showToast) {
+                const message = forceAdd
+                    ? `Added duplicate "${txn.merchant}" to recurring`
+                    : `Added "${txn.merchant}" to recurring`;
+                showToast(message, 'success');
             }
         } catch (e) {
             console.error('Failed to add to recurring:', e);
+            if (showToast) showToast('Failed to add to recurring', 'error');
+        } finally {
+            setIsAddingRecurring(null);
         }
-    };
+    }, [findExistingRecurring, setManualRecurring, setApprovedItems, setChargeAssignments, setSubscriptionRules, showToast]);
+
+    // Public handler for add to recurring button
+    const addToRecurring = useCallback((txn) => {
+        executeAddToRecurring(txn, false);
+    }, [executeAddToRecurring]);
+
+    // Duplicate modal handlers
+    const handleDuplicateCancel = useCallback(() => {
+        setDuplicateModalOpen(false);
+        setDuplicateInfo({ existing: null, newTxn: null });
+        if (showToast) showToast('Cancelled - item already exists', 'info');
+    }, [showToast]);
+
+    const handleDuplicateAddAnyway = useCallback(() => {
+        if (duplicateInfo.newTxn) {
+            executeAddToRecurring(duplicateInfo.newTxn, true);
+        }
+        setDuplicateModalOpen(false);
+        setDuplicateInfo({ existing: null, newTxn: null });
+    }, [duplicateInfo.newTxn, executeAddToRecurring]);
 
     // Add ALL matching transactions to recurring (groups by merchantKey)
     const addAllMatchingToRecurring = (txn) => {
@@ -405,6 +484,13 @@ export default function TransactionTable({ showToast }) {
             filtered = filtered.filter(t => getAccountType(t) === accountFilter);
         }
 
+        // Apply recurring filter
+        if (recurringFilter === 'recurring') {
+            filtered = filtered.filter(t => isRecurring(t));
+        } else if (recurringFilter === 'one-time') {
+            filtered = filtered.filter(t => !isRecurring(t));
+        }
+
         filtered.sort((a, b) => {
             let aVal, bVal;
             if (sortField === 'date') {
@@ -426,7 +512,7 @@ export default function TransactionTable({ showToast }) {
             'Categories in results:', [...new Set(filtered.map(t => t.category))]);
 
         return filtered;
-    }, [transactions, search, sortField, sortDir, categoryFilter, accountFilter, typeFilter, dateRange, exitingIds, effectiveNames, chargeAssignments]);
+    }, [transactions, search, sortField, sortDir, categoryFilter, accountFilter, typeFilter, recurringFilter, dateRange, exitingIds, effectiveNames, chargeAssignments, approvedRecurring, manualRecurring]);
 
     // Calculate totals for filtered transactions
     const totals = useMemo(() => {
@@ -439,7 +525,7 @@ export default function TransactionTable({ showToast }) {
     // Reset display count when filters change
     useEffect(() => {
         setDisplayCount(50);
-    }, [categoryFilter, accountFilter, typeFilter, search, dateRange]);
+    }, [categoryFilter, accountFilter, typeFilter, recurringFilter, search, dateRange]);
 
     const displayedTransactions = allFilteredTransactions.slice(0, displayCount);
     const hasMore = displayCount < allFilteredTransactions.length;
@@ -550,6 +636,22 @@ export default function TransactionTable({ showToast }) {
                         <option value="spending">Spending</option>
                         <option value="income">Income</option>
                     </select>
+                    <select
+                        value={recurringFilter}
+                        onChange={(e) => setRecurringFilter(e.target.value)}
+                        style={{
+                            padding: '8px 12px',
+                            background: recurringFilter === 'recurring' ? 'rgba(16, 185, 129, 0.2)' : recurringFilter === 'one-time' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '0.875rem'
+                        }}
+                    >
+                        <option value="all">All Items</option>
+                        <option value="recurring">Recurring Only</option>
+                        <option value="one-time">One-Time Only</option>
+                    </select>
                 </div>
             </div>
 
@@ -587,6 +689,7 @@ export default function TransactionTable({ showToast }) {
                                 onCategoryChange={(cat) => handleCategoryChange(t, cat)}
                                 onAddToRecurring={() => addToRecurring(t)}
                                 isRecurring={isRecurring(t)}
+                                isAddingToRecurring={isAddingRecurring === t.id}
                                 chargeAssignment={chargeAssignments[getTransactionId(t)]}
                                 effectiveName={(() => {
                                     const txnId = getTransactionId(t);
@@ -670,6 +773,16 @@ export default function TransactionTable({ showToast }) {
                     )}
                 </div>
             </div>
+
+            {/* Duplicate Recurring Modal */}
+            <DuplicateRecurringModal
+                isOpen={duplicateModalOpen}
+                onClose={() => setDuplicateModalOpen(false)}
+                existingItem={duplicateInfo.existing}
+                newTransaction={duplicateInfo.newTxn}
+                onCancel={handleDuplicateCancel}
+                onAddAnyway={handleDuplicateAddAnyway}
+            />
         </div>
     );
 }
