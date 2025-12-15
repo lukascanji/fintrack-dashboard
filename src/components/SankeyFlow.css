@@ -1,0 +1,310 @@
+/* SankeyFlow Component Styles */
+
+.sankey-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Stats Grid */
+.sankey-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+@media (max-width: 1200px) {
+    .sankey-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .sankey-stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sankey-stat-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sankey-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1);
+}
+
+.sankey-stat-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.sankey-stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.sankey-stat-value.positive {
+    color: var(--accent-success);
+}
+
+.sankey-stat-value.negative {
+    color: var(--accent-danger);
+}
+
+.sankey-stat-meta {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+/* Period Selector */
+.sankey-period-selector {
+    display: flex;
+    gap: 8px;
+}
+
+.sankey-period-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sankey-period-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--text-primary);
+}
+
+.sankey-period-btn.active {
+    background: var(--gradient-primary);
+    color: white;
+    border-color: transparent;
+}
+
+/* Detail Toggle Button */
+.sankey-detail-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sankey-detail-toggle:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--text-primary);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.sankey-detail-toggle.expanded {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--accent-primary);
+    border-color: rgba(99, 102, 241, 0.4);
+}
+
+/* Chart Card */
+.sankey-chart-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-glow);
+}
+
+.sankey-chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+}
+
+.sankey-chart-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.sankey-chart-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.sankey-total-badges {
+    display: flex;
+    gap: 16px;
+}
+
+.sankey-total-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 20px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.sankey-total-badge-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.sankey-total-badge-value {
+    font-size: 1.125rem;
+    font-weight: 700;
+}
+
+.sankey-total-badge-value.income {
+    color: var(--accent-success);
+}
+
+.sankey-total-badge-value.expenses {
+    color: var(--accent-danger);
+}
+
+/* Flow Direction */
+.sankey-flow-direction {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+.sankey-flow-direction svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* SVG Container */
+.sankey-svg-container {
+    position: relative;
+    width: 100%;
+    height: 600px;
+    overflow: hidden;
+}
+
+.sankey-svg-container svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* D3 Sankey Nodes */
+.sankey-node rect {
+    fill-opacity: 0.9;
+    shape-rendering: crispEdges;
+    cursor: pointer;
+    transition: fill-opacity 0.2s ease;
+}
+
+.sankey-node rect:hover {
+    fill-opacity: 1;
+}
+
+.sankey-node text {
+    pointer-events: none;
+    font-size: 11px;
+    fill: var(--text-primary);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* D3 Sankey Links */
+.sankey-link {
+    fill: none;
+    stroke-opacity: 0.25;
+    transition: stroke-opacity 0.2s ease;
+    pointer-events: stroke;
+    cursor: pointer;
+}
+
+.sankey-link:hover {
+    stroke-opacity: 0.6;
+}
+
+/* Tooltip */
+.sankey-tooltip {
+    position: fixed;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    max-width: 250px;
+}
+
+.sankey-tooltip.visible {
+    opacity: 1;
+}
+
+.sankey-tooltip-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.sankey-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    margin: 4px 0;
+}
+
+.sankey-tooltip-label {
+    color: var(--text-secondary);
+}
+
+.sankey-tooltip-value {
+    font-weight: 600;
+}
+
+/* Legend */
+.sankey-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-color);
+}
+
+.sankey-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.sankey-legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}

@@ -16,18 +16,31 @@ const GLOBAL_RENAMES_KEY = 'fintrack_global_renames';
 const MANUAL_RECURRING_KEY = 'fintrack_manual_recurring';
 const APPROVED_KEY = 'fintrack_recurring_approved';
 
-export default function TransactionTable({ showToast }) {
-    const [search, setSearch] = useState('');
+export default function TransactionTable({ showToast, presetFilters }) {
+    // Initialize filters from presetFilters prop if provided
+    const [search, setSearch] = useState(presetFilters?.search || '');
     const [sortField, setSortField] = useState('date');
     const [sortDir, setSortDir] = useState('desc');
-    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [categoryFilter, setCategoryFilter] = useState(presetFilters?.category || 'all');
     const [accountFilter, setAccountFilter] = useState('all');
-    const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'spending', 'income'
+    const [typeFilter, setTypeFilter] = useState(presetFilters?.type || 'all'); // 'all', 'spending', 'income'
     const [recurringFilter, setRecurringFilter] = useState('all'); // 'all', 'recurring', 'one-time'
-    const [dateRange, setDateRange] = useState('all');
+    const [dateRange, setDateRange] = useState(presetFilters?.period || 'all');
+    const [excludeCategories, setExcludeCategories] = useState(presetFilters?.excludeCategories || []);
     const [displayCount, setDisplayCount] = useState(50);
     const [forceRefresh, setForceRefresh] = useState(0);
     const [exitingIds, setExitingIds] = useState(new Set());
+
+    // Update filters when presetFilters change (e.g., navigation from Sankey)
+    useEffect(() => {
+        if (presetFilters) {
+            if (presetFilters.search !== undefined) setSearch(presetFilters.search);
+            if (presetFilters.category !== undefined) setCategoryFilter(presetFilters.category);
+            if (presetFilters.period !== undefined) setDateRange(presetFilters.period);
+            if (presetFilters.type !== undefined) setTypeFilter(presetFilters.type);
+            if (presetFilters.excludeCategories !== undefined) setExcludeCategories(presetFilters.excludeCategories);
+        }
+    }, [presetFilters]);
 
     // --- Global State from Context ---
     const {
@@ -478,6 +491,11 @@ export default function TransactionTable({ showToast }) {
         if (categoryFilter !== 'all') {
             // Keep exiting items visible during animation even if their category changed
             filtered = filtered.filter(t => t.category === categoryFilter || exitingIds.has(t.id));
+        }
+
+        // Apply category exclusion filter (from Sankey navigation for "Other Income")
+        if (excludeCategories && excludeCategories.length > 0) {
+            filtered = filtered.filter(t => !excludeCategories.includes(t.category));
         }
 
         if (accountFilter !== 'all') {

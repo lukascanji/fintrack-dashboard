@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { LayoutDashboard, Upload, Receipt, Settings, Wallet, RefreshCw, Trash2, CalendarDays, Download, Users, FileText } from 'lucide-react';
+import { LayoutDashboard, Upload, Receipt, Settings, Wallet, RefreshCw, Trash2, CalendarDays, Download, Users, FileText, GitBranch } from 'lucide-react';
 import FileUpload from './components/FileUpload';
 import KPICards from './components/KPICards';
 import SpendingChart from './components/SpendingChart';
@@ -9,6 +9,7 @@ import Alerts from './components/Alerts';
 import TransactionTable from './components/TransactionTable';
 import Subscriptions from './components/Subscriptions';
 import CalendarView from './components/CalendarView';
+import SankeyFlow from './components/SankeyFlow';
 import People from './components/People';
 import Rules from './components/Rules';
 import DateRangeFilter, { filterByDateRange } from './components/DateRangeFilter';
@@ -28,9 +29,19 @@ function App() {
   const [dateRange, setDateRange] = useState('all');
   const [toast, setToast] = useState(null);
 
+  // Shared filter state for cross-component navigation (e.g., Sankey -> Transactions)
+  const [transactionFilters, setTransactionFilters] = useState(null);
+
   // Show toast notification
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type, key: Date.now() });
+  }, []);
+
+  // Handle navigation from Sankey to Transactions with preset filters
+  const handleNavigateToTransactions = useCallback((filters) => {
+    // Set filters first, then navigate - use object with timestamp to force update
+    setTransactionFilters({ ...filters, _ts: Date.now() });
+    setActiveView('transactions');
   }, []);
 
   // Filter transactions by date range
@@ -120,6 +131,13 @@ function App() {
           >
             <CalendarDays size={20} />
             Calendar
+          </div>
+          <div
+            className={`nav-item ${activeView === 'flow' ? 'active' : ''}`}
+            onClick={() => setActiveView('flow')}
+          >
+            <GitBranch size={20} />
+            Flow
           </div>
           <div
             className={`nav-item ${activeView === 'people' ? 'active' : ''}`}
@@ -244,7 +262,7 @@ function App() {
                 </div>
               </div>
             ) : (
-              <TransactionTable showToast={showToast} />
+              <TransactionTable showToast={showToast} presetFilters={transactionFilters} />
             )}
           </>
         )}
@@ -295,6 +313,31 @@ function App() {
               </div>
             ) : (
               <CalendarView />
+            )}
+          </>
+        )}
+
+        {activeView === 'flow' && (
+          <>
+            <div className="section-header">
+              <h1 className="section-title">Money Flow</h1>
+            </div>
+            {transactions.length === 0 ? (
+              <div className="card">
+                <div className="empty-state">
+                  <GitBranch className="empty-state-icon" size={80} />
+                  <div className="empty-state-title">No Data</div>
+                  <div className="empty-state-text">
+                    Import CSV files to visualize your money flow.
+                  </div>
+                  <button className="btn btn-primary" onClick={() => setActiveView('upload')}>
+                    <Upload size={16} />
+                    Import Data
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <SankeyFlow onNavigateToTransactions={handleNavigateToTransactions} />
             )}
           </>
         )}
