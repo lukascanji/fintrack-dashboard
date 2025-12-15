@@ -51,14 +51,15 @@ export function calculateStats(transactions) {
         categoryBreakdown[t.category] = (categoryBreakdown[t.category] || 0) + t.debit;
     });
 
-    // Merchant breakdown
+    // Merchant breakdown - use effectiveMerchant if available (from enriched transactions)
     const merchantBreakdown = {};
     spendingTxns.forEach(t => {
-        if (!merchantBreakdown[t.merchant]) {
-            merchantBreakdown[t.merchant] = { total: 0, count: 0, category: t.category };
+        const merchantName = t.effectiveMerchant || t.merchant;
+        if (!merchantBreakdown[merchantName]) {
+            merchantBreakdown[merchantName] = { total: 0, count: 0, category: t.category };
         }
-        merchantBreakdown[t.merchant].total += t.debit;
-        merchantBreakdown[t.merchant].count += 1;
+        merchantBreakdown[merchantName].total += t.debit;
+        merchantBreakdown[merchantName].count += 1;
     });
 
     return {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Calendar, ChevronDown } from 'lucide-react';
 
 export const PRESETS = [
@@ -8,7 +8,8 @@ export const PRESETS = [
     { label: 'Last 3 Months', value: 'last3Months' },
     { label: 'Last 6 Months', value: 'last6Months' },
     { label: 'This Year', value: 'thisYear' },
-    { label: 'Last Year', value: 'lastYear' }
+    { label: 'Last Year', value: 'lastYear' },
+    { label: 'Custom Range', value: 'custom' }
 ];
 
 function getDateRange(preset) {
@@ -35,14 +36,23 @@ function getDateRange(preset) {
     }
 }
 
-export default function DateRangeFilter({ value, onChange }) {
+export default function DateRangeFilter({ value, onChange, customDates, onCustomDatesChange }) {
     const [isOpen, setIsOpen] = useState(false);
 
-    const selectedLabel = PRESETS.find(p => p.value === value)?.label || 'All Time';
+    // Determine label: if custom with dates, show date range
+    let selectedLabel;
+    if (value === 'custom' && customDates?.start && customDates?.end) {
+        const formatDate = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        selectedLabel = `${formatDate(customDates.start)} - ${formatDate(customDates.end)}`;
+    } else {
+        selectedLabel = PRESETS.find(p => p.value === value)?.label || 'All Time';
+    }
 
     const handleSelect = (preset) => {
         onChange(preset);
-        setIsOpen(false);
+        if (preset !== 'custom') {
+            setIsOpen(false);
+        }
     };
 
     return (
@@ -78,7 +88,7 @@ export default function DateRangeFilter({ value, onChange }) {
                     borderRadius: '8px',
                     padding: '8px 0',
                     zIndex: 100,
-                    minWidth: '160px',
+                    minWidth: '200px',
                     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
                 }}>
                     {PRESETS.map(preset => (
@@ -96,6 +106,67 @@ export default function DateRangeFilter({ value, onChange }) {
                             {preset.label}
                         </div>
                     ))}
+
+                    {value === 'custom' && onCustomDatesChange && (
+                        <div style={{
+                            padding: '12px 16px',
+                            borderTop: '1px solid var(--border-color)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                    type="date"
+                                    value={customDates?.start || ''}
+                                    onChange={(e) => onCustomDatesChange({ ...customDates, start: e.target.value })}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        border: '1px solid var(--border-color)',
+                                        background: 'rgba(255, 255, 255, 0.08)',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '0.8rem',
+                                        flex: 1
+                                    }}
+                                />
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>to</span>
+                                <input
+                                    type="date"
+                                    value={customDates?.end || ''}
+                                    onChange={(e) => onCustomDatesChange({ ...customDates, end: e.target.value })}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        border: '1px solid var(--border-color)',
+                                        background: 'rgba(255, 255, 255, 0.08)',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '0.8rem',
+                                        flex: 1
+                                    }}
+                                />
+                            </div>
+                            {customDates?.start && customDates?.end && (
+                                <button
+                                    onClick={() => setIsOpen(false)}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: 'var(--gradient-primary)',
+                                        color: 'white',
+                                        fontSize: '0.8rem',
+                                        cursor: 'pointer',
+                                        marginTop: '4px'
+                                    }}
+                                >
+                                    Apply
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -103,10 +174,22 @@ export default function DateRangeFilter({ value, onChange }) {
 }
 
 // Utility function to filter transactions by date range
-export function filterByDateRange(transactions, preset) {
+// Now supports both preset strings and custom date objects
+export function filterByDateRange(transactions, preset, customDates = null) {
     if (preset === 'all' || !preset) return transactions;
 
-    const { start, end } = getDateRange(preset);
+    let start, end;
+
+    if (preset === 'custom' && customDates?.start && customDates?.end) {
+        start = new Date(customDates.start);
+        end = new Date(customDates.end);
+        end.setHours(23, 59, 59, 999); // Include entire end day
+    } else {
+        const range = getDateRange(preset);
+        start = range.start;
+        end = range.end;
+    }
+
     if (!start || !end) return transactions;
 
     return transactions.filter(t => {

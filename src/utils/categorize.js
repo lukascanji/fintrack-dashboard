@@ -168,6 +168,7 @@ export const categoryColors = {
     'FEES': '#f59e0b',           // Amber
     'INCOME': '#22c55e',         // Bright Green
     'TRANSFER': '#64748b',       // Slate
+    'TRANSFER OUT': '#8b5cf6',   // Violet - outgoing transfers
     'TRANSPORTATION': '#f97316', // Orange
     'OTHER': '#71717a'           // Gray
 };

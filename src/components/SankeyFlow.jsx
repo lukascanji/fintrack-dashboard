@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import * as d3 from 'd3';
 import { sankey as d3Sankey, sankeyLinkHorizontal, sankeyLeft } from 'd3-sankey';
-import { ArrowRight, Layers, Layers2 } from 'lucide-react';
-import { useTransactions } from '../context/TransactionContext';
+import { ArrowRight, Layers, Layers2, Calendar } from 'lucide-react';
+import { useEnrichedTransactions } from '../hooks/useEnrichedTransactions';
 import { categoryColors } from '../utils/categorize';
 import { filterByDateRange } from './DateRangeFilter';
 import './SankeyFlow.css';
@@ -66,18 +66,18 @@ function buildSankeyData(transactions, expandedCategories = null) {
         if (t.credit > 0) {
             // Income
             const source = t.category === 'INCOME' ? t.merchant :
-                t.category === 'TRANSFER' && t.credit > 0 ? 'E-Transfer In' : 'Other Income';
+                t.category === 'TRANSFER' && t.credit > 0 ? 'Transfer In' : 'Other Income';
             incomeBySource[source] = (incomeBySource[source] || 0) + t.credit;
-        } else if (t.debit > 0 && t.category !== 'TRANSFER') {
-            // Expense (exclude transfers)
-            const category = t.category || 'OTHER';
+        } else if (t.debit > 0) {
+            // Expense - include transfers as "TRANSFER OUT" category
+            const category = t.category === 'TRANSFER' ? 'TRANSFER OUT' : (t.category || 'OTHER');
             expensesByCategory[category] = (expensesByCategory[category] || 0) + t.debit;
 
             // Track merchants within category
             if (!merchantsByCategory[category]) {
                 merchantsByCategory[category] = {};
             }
-            const merchant = t.merchant || 'Unknown';
+            const merchant = t.effectiveMerchant || t.merchant || 'Unknown';
             merchantsByCategory[category][merchant] = (merchantsByCategory[category][merchant] || 0) + t.debit;
         }
     });
@@ -188,8 +188,10 @@ function getNodeColor(node) {
 }
 
 export default function SankeyFlow({ onNavigateToTransactions }) {
-    const { transactions } = useTransactions();
+    const { transactions } = useEnrichedTransactions();
     const [period, setPeriod] = useState('last6Months');
+    const [customDateRange, setCustomDateRange] = useState({ start: null, end: null });
+    const [showCustomDates, setShowCustomDates] = useState(false);
     // null = show all merchants (detailed), empty Set = show no merchants (summary)
     // Set with categories = show those specific categories' merchants
     const [expandedCategories, setExpandedCategories] = useState(null);
@@ -197,11 +199,16 @@ export default function SankeyFlow({ onNavigateToTransactions }) {
     const containerRef = useRef(null);
     const tooltipRef = useRef(null);
 
-    // Filter and transform data - use shared filterByDateRange for consistency
-    const filteredTransactions = useMemo(() =>
-        filterByDateRange(transactions, period),
-        [transactions, period]
-    );
+    // Filter transactions by either preset or custom date range
+    const filteredTransactions = useMemo(() => {
+        if (showCustomDates && customDateRange.start && customDateRange.end) {
+            const startDate = new Date(customDateRange.start);
+            const endDate = new Date(customDateRange.end);
+            endDate.setHours(23, 59, 59, 999); // Include entire end day
+            return transactions.filter(t => t.date >= startDate && t.date <= endDate);
+        }
+        return filterByDateRange(transactions, period);
+    }, [transactions, period, showCustomDates, customDateRange]);
 
     // Get all categories for expand/collapse logic
     const allCategories = useMemo(() => {
@@ -561,15 +568,44 @@ export default function SankeyFlow({ onNavigateToTransactions }) {
                             {periodOptions.map(opt => (
                                 <button
                                     key={opt.value}
-                                    className={`sankey-period-btn ${period === opt.value ? 'active' : ''}`}
-                                    onClick={() => setPeriod(opt.value)}
+                                    className={`sankey-period-btn ${!showCustomDates && period === opt.value ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setPeriod(opt.value);
+                                        setShowCustomDates(false);
+                                    }}
                                 >
                                     {opt.label}
                                 </button>
                             ))}
+                            <button
+                                className={`sankey-period-btn ${showCustomDates ? 'active' : ''}`}
+                                onClick={() => setShowCustomDates(!showCustomDates)}
+                                title="Custom date range"
+                            >
+                                <Calendar size={14} />
+                            </button>
                         </div>
                     </div>
                 </div>
+
+                {showCustomDates && (
+                    <div className="sankey-custom-dates-row">
+                        <span className="sankey-custom-dates-label">Custom Range:</span>
+                        <input
+                            type="date"
+                            value={customDateRange.start || ''}
+                            onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
+                            className="sankey-date-input"
+                        />
+                        <span className="sankey-date-separator">to</span>
+                        <input
+                            type="date"
+                            value={customDateRange.end || ''}
+                            onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
+                            className="sankey-date-input"
+                        />
+                    </div>
+                )}
 
                 <div className="sankey-flow-direction">
                     <ArrowRight size={20} />

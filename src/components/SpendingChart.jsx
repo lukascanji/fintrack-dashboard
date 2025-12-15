@@ -18,11 +18,18 @@ ChartJS.register(
     Legend
 );
 
-export default function SpendingChart({ monthlyData }) {
+export default function SpendingChart({ monthlyData, onNavigateToTransactions }) {
     if (!monthlyData || monthlyData.length === 0) return null;
 
+    // Format month label for display (e.g., "2024-12" -> "Dec 2024")
+    const formatMonthLabel = (monthKey) => {
+        const [year, month] = monthKey.split('-');
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${monthNames[parseInt(month) - 1]} ${year}`;
+    };
+
     const data = {
-        labels: monthlyData.map(m => m.month),
+        labels: monthlyData.map(m => formatMonthLabel(m.month)),
         datasets: [
             {
                 label: 'Income',
@@ -43,9 +50,43 @@ export default function SpendingChart({ monthlyData }) {
         ]
     };
 
+    // Handle click on bar to navigate to transactions for that month
+    const handleClick = (event, elements) => {
+        if (!onNavigateToTransactions || elements.length === 0) return;
+
+        const element = elements[0];
+        const monthKey = monthlyData[element.index].month; // e.g., "2024-12"
+        const datasetIndex = element.datasetIndex; // 0 = Income, 1 = Expenses
+
+        // Parse the month key (YYYY-MM format)
+        const [yearStr, monthStr] = monthKey.split('-');
+        const year = parseInt(yearStr);
+        const monthIndex = parseInt(monthStr) - 1; // 0-indexed
+
+        if (isNaN(year) || isNaN(monthIndex)) return;
+
+        // Create start and end dates for the month
+        const startDate = new Date(year, monthIndex, 1);
+        const endDate = new Date(year, monthIndex + 1, 0); // Last day of month
+
+        const formatDate = (d) => d.toISOString().split('T')[0]; // YYYY-MM-DD
+
+        const filters = {
+            period: 'custom',
+            customDates: {
+                start: formatDate(startDate),
+                end: formatDate(endDate)
+            },
+            type: datasetIndex === 0 ? 'income' : 'spending'
+        };
+
+        onNavigateToTransactions(filters);
+    };
+
     const options = {
         responsive: true,
         maintainAspectRatio: false,
+        onClick: handleClick,
         plugins: {
             legend: {
                 position: 'top',
@@ -67,7 +108,8 @@ export default function SpendingChart({ monthlyData }) {
                 callbacks: {
                     label: (context) => {
                         return ` ${context.dataset.label}: $${context.raw.toLocaleString()}`;
-                    }
+                    },
+                    footer: () => 'Click to view transactions'
                 }
             }
         },
@@ -84,6 +126,10 @@ export default function SpendingChart({ monthlyData }) {
                     callback: (value) => `$${value.toLocaleString()}`
                 }
             }
+        },
+        // Add cursor pointer on hover
+        onHover: (event, elements) => {
+            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
         }
     };
 

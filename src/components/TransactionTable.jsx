@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, ChevronDown, ChevronUp, Plus, Calendar } from 'lucide-react';
 import { filterByDateRange, PRESETS as DATE_PRESETS } from './DateRangeFilter';
+import DateRangeFilter from './DateRangeFilter';
 import { saveCategoryRule, getMerchantKey } from '../utils/categorize';
 import { useTransactions } from '../context/TransactionContext';
 import { getTransactionId } from '../utils/transactionId';
@@ -26,17 +27,19 @@ export default function TransactionTable({ showToast, presetFilters }) {
     const [typeFilter, setTypeFilter] = useState(presetFilters?.type || 'all'); // 'all', 'spending', 'income'
     const [recurringFilter, setRecurringFilter] = useState('all'); // 'all', 'recurring', 'one-time'
     const [dateRange, setDateRange] = useState(presetFilters?.period || 'all');
+    const [customDateRange, setCustomDateRange] = useState({ start: null, end: null });
     const [excludeCategories, setExcludeCategories] = useState(presetFilters?.excludeCategories || []);
     const [displayCount, setDisplayCount] = useState(50);
     const [forceRefresh, setForceRefresh] = useState(0);
     const [exitingIds, setExitingIds] = useState(new Set());
 
-    // Update filters when presetFilters change (e.g., navigation from Sankey)
+    // Update filters when presetFilters change (e.g., navigation from Sankey or Dashboard charts)
     useEffect(() => {
         if (presetFilters) {
             if (presetFilters.search !== undefined) setSearch(presetFilters.search);
             if (presetFilters.category !== undefined) setCategoryFilter(presetFilters.category);
             if (presetFilters.period !== undefined) setDateRange(presetFilters.period);
+            if (presetFilters.customDates !== undefined) setCustomDateRange(presetFilters.customDates);
             if (presetFilters.type !== undefined) setTypeFilter(presetFilters.type);
             if (presetFilters.excludeCategories !== undefined) setExcludeCategories(presetFilters.excludeCategories);
         }
@@ -449,7 +452,7 @@ export default function TransactionTable({ showToast, presetFilters }) {
         if (!transactions) return [];
 
         // First apply date filter
-        let filtered = filterByDateRange(transactions, dateRange);
+        let filtered = filterByDateRange(transactions, dateRange, customDateRange);
 
         // Apply type filter (spending/income/all)
         if (typeFilter === 'spending') {
@@ -530,7 +533,7 @@ export default function TransactionTable({ showToast, presetFilters }) {
             'Categories in results:', [...new Set(filtered.map(t => t.category))]);
 
         return filtered;
-    }, [transactions, search, sortField, sortDir, categoryFilter, accountFilter, typeFilter, recurringFilter, dateRange, exitingIds, effectiveNames, chargeAssignments, approvedRecurring, manualRecurring]);
+    }, [transactions, search, sortField, sortDir, categoryFilter, accountFilter, typeFilter, recurringFilter, dateRange, customDateRange, exitingIds, effectiveNames, chargeAssignments, approvedRecurring, manualRecurring, excludeCategories]);
 
     // Calculate totals for filtered transactions
     const totals = useMemo(() => {
@@ -570,22 +573,12 @@ export default function TransactionTable({ showToast, presetFilters }) {
                 <div className="card-title" style={{ margin: 0 }}>Transactions</div>
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                     {/* Date Range Filter */}
-                    <select
+                    <DateRangeFilter
                         value={dateRange}
-                        onChange={(e) => setDateRange(e.target.value)}
-                        style={{
-                            padding: '8px 12px',
-                            background: 'rgba(255, 255, 255, 0.05)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '8px',
-                            color: 'white',
-                            fontSize: '0.875rem'
-                        }}
-                    >
-                        {DATE_PRESETS.map(p => (
-                            <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                    </select>
+                        onChange={setDateRange}
+                        customDates={customDateRange}
+                        onCustomDatesChange={setCustomDateRange}
+                    />
                     <div style={{ position: 'relative' }}>
                         <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
                         <input

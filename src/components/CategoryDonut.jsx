@@ -4,7 +4,7 @@ import { getCategoryColor } from '../utils/categorize';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-export default function CategoryDonut({ categoryBreakdown }) {
+export default function CategoryDonut({ categoryBreakdown, onNavigateToTransactions, currentDateRange, currentCustomDates }) {
     if (!categoryBreakdown || Object.keys(categoryBreakdown).length === 0) return null;
 
     const sortedCategories = Object.entries(categoryBreakdown)
@@ -27,10 +27,54 @@ export default function CategoryDonut({ categoryBreakdown }) {
         ]
     };
 
+    // Handle click on chart segment
+    const handleClick = (event, elements) => {
+        if (!onNavigateToTransactions || elements.length === 0) return;
+
+        const element = elements[0];
+        const category = sortedCategories[element.index][0];
+
+        const filters = {
+            category: category,
+            type: 'spending'
+        };
+
+        // Preserve current date range from Dashboard
+        if (currentDateRange) {
+            filters.period = currentDateRange;
+        }
+        if (currentCustomDates) {
+            filters.customDates = currentCustomDates;
+        }
+
+        onNavigateToTransactions(filters);
+    };
+
+    // Handle click on legend item
+    const handleLegendClick = (category) => {
+        if (!onNavigateToTransactions) return;
+
+        const filters = {
+            category: category,
+            type: 'spending'
+        };
+
+        // Preserve current date range from Dashboard
+        if (currentDateRange) {
+            filters.period = currentDateRange;
+        }
+        if (currentCustomDates) {
+            filters.customDates = currentCustomDates;
+        }
+
+        onNavigateToTransactions(filters);
+    };
+
     const options = {
         responsive: true,
         maintainAspectRatio: false,
         cutout: '65%',
+        onClick: handleClick,
         plugins: {
             legend: {
                 display: false // We'll render a custom legend below
@@ -46,9 +90,14 @@ export default function CategoryDonut({ categoryBreakdown }) {
                     label: (context) => {
                         const percentage = ((context.raw / totalSpend) * 100).toFixed(1);
                         return ` $${context.raw.toLocaleString()} (${percentage}%)`;
-                    }
+                    },
+                    footer: () => 'Click to view transactions'
                 }
             }
+        },
+        // Add cursor pointer on hover
+        onHover: (event, elements) => {
+            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
         }
     };
 
@@ -64,14 +113,15 @@ export default function CategoryDonut({ categoryBreakdown }) {
                     top: '50%',
                     left: '50%',
                     transform: 'translate(-50%, -50%)',
-                    textAlign: 'center'
+                    textAlign: 'center',
+                    pointerEvents: 'none'
                 }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Total</div>
                     <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>${totalSpend.toLocaleString()}</div>
                 </div>
             </div>
 
-            {/* Custom legend grid */}
+            {/* Custom legend grid - clickable */}
             <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(2, 1fr)',
@@ -80,7 +130,27 @@ export default function CategoryDonut({ categoryBreakdown }) {
                 paddingTop: '12px'
             }}>
                 {sortedCategories.map(([cat, value]) => (
-                    <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div
+                        key={cat}
+                        onClick={() => handleLegendClick(cat)}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: onNavigateToTransactions ? 'pointer' : 'default',
+                            padding: '4px 6px',
+                            borderRadius: '4px',
+                            transition: 'background 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                            if (onNavigateToTransactions) {
+                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                            }
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                        }}
+                    >
                         <div style={{
                             width: '10px',
                             height: '10px',
@@ -100,4 +170,3 @@ export default function CategoryDonut({ categoryBreakdown }) {
         </div>
     );
 }
-

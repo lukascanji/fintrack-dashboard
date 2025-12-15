@@ -16,17 +16,18 @@ import DateRangeFilter, { filterByDateRange } from './components/DateRangeFilter
 import { calculateStats } from './utils/stats';
 import { categorizeMerchant } from './utils/categorize';
 import Toast from './components/Toast';
-import { useTransactions } from './context/TransactionContext';
+import { useEnrichedTransactions } from './hooks/useEnrichedTransactions';
 import './App.css';
 
 function App() {
   const {
     transactions,
     clearTransactions
-  } = useTransactions();
+  } = useEnrichedTransactions();
 
   const [activeView, setActiveView] = useState('dashboard');
   const [dateRange, setDateRange] = useState('all');
+  const [customDateRange, setCustomDateRange] = useState({ start: null, end: null });
   const [toast, setToast] = useState(null);
 
   // Shared filter state for cross-component navigation (e.g., Sankey -> Transactions)
@@ -46,8 +47,8 @@ function App() {
 
   // Filter transactions by date range
   const filteredTransactions = useMemo(() =>
-    filterByDateRange(transactions, dateRange),
-    [transactions, dateRange]
+    filterByDateRange(transactions, dateRange, customDateRange),
+    [transactions, dateRange, customDateRange]
   );
 
   const stats = useMemo(() => calculateStats(filteredTransactions), [filteredTransactions]);
@@ -200,7 +201,12 @@ function App() {
               <h1 className="section-title">Financial Dashboard</h1>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                 {transactions.length > 0 && (
-                  <DateRangeFilter value={dateRange} onChange={setDateRange} />
+                  <DateRangeFilter
+                    value={dateRange}
+                    onChange={setDateRange}
+                    customDates={customDateRange}
+                    onCustomDatesChange={setCustomDateRange}
+                  />
                 )}
                 {transactions.length === 0 && (
                   <button className="btn btn-primary" onClick={() => setActiveView('upload')}>
@@ -229,12 +235,20 @@ function App() {
               <>
                 <KPICards stats={stats} />
 
-                <Alerts stats={stats} categoryBreakdown={stats.categoryBreakdown} />
-
                 <div className="charts-grid">
-                  <SpendingChart monthlyData={stats.monthlyData} />
-                  <CategoryDonut categoryBreakdown={stats.categoryBreakdown} />
+                  <SpendingChart
+                    monthlyData={stats.monthlyData}
+                    onNavigateToTransactions={handleNavigateToTransactions}
+                  />
+                  <CategoryDonut
+                    categoryBreakdown={stats.categoryBreakdown}
+                    onNavigateToTransactions={handleNavigateToTransactions}
+                    currentDateRange={dateRange}
+                    currentCustomDates={customDateRange}
+                  />
                 </div>
+
+                <Alerts stats={stats} categoryBreakdown={stats.categoryBreakdown} />
 
                 <TopMerchants merchantBreakdown={stats.merchantBreakdown} />
               </>
