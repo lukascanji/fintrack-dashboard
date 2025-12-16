@@ -4,7 +4,7 @@ import { parseMultipleCSVs, previewCSV } from '../utils/parseCSV';
 
 import { useTransactions } from '../context/TransactionContext';
 
-export default function FileUpload() {
+export default function FileUpload({ showToast }) {
     const { transactions: existingTransactions, addTransactions } = useTransactions();
 
     const [isDragging, setIsDragging] = useState(false);
@@ -62,6 +62,10 @@ export default function FileUpload() {
 
         if (result.transactions.length > 0) {
             addTransactions(result.transactions);
+            // Show toast notification on successful import
+            if (showToast) {
+                showToast(`Imported ${result.stats.totalNew} new transaction${result.stats.totalNew !== 1 ? 's' : ''}`, 'success');
+            }
         }
         setLoading(false);
     };

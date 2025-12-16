@@ -1,6 +1,6 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, ChevronDown, ChevronUp, Plus, Calendar } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, Plus, Calendar, X } from 'lucide-react';
 import { filterByDateRange, PRESETS as DATE_PRESETS } from './DateRangeFilter';
 import DateRangeFilter from './DateRangeFilter';
 import { saveCategoryRule, getMerchantKey } from '../utils/categorize';
@@ -551,6 +551,31 @@ export default function TransactionTable({ showToast, presetFilters }) {
     const displayedTransactions = allFilteredTransactions.slice(0, displayCount);
     const hasMore = displayCount < allFilteredTransactions.length;
 
+    // Count active filters for badge display
+    const activeFilterCount = useMemo(() => {
+        let count = 0;
+        if (search !== '') count++;
+        if (categoryFilter !== 'all') count++;
+        if (accountFilter !== 'all') count++;
+        if (typeFilter !== 'all') count++;
+        if (recurringFilter !== 'all') count++;
+        if (dateRange !== 'all') count++;
+        if (excludeCategories.length > 0) count++;
+        return count;
+    }, [search, categoryFilter, accountFilter, typeFilter, recurringFilter, dateRange, excludeCategories]);
+
+    // Clear all filters
+    const clearAllFilters = useCallback(() => {
+        setSearch('');
+        setCategoryFilter('all');
+        setAccountFilter('all');
+        setTypeFilter('all');
+        setRecurringFilter('all');
+        setDateRange('all');
+        setCustomDateRange({ start: null, end: null });
+        setExcludeCategories([]);
+    }, []);
+
     const handleSort = (field) => {
         if (sortField === field) {
             setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -570,7 +595,49 @@ export default function TransactionTable({ showToast, presetFilters }) {
     return (
         <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-                <div className="card-title" style={{ margin: 0 }}>Transactions</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div className="card-title" style={{ margin: 0 }}>Transactions</div>
+                    {/* Active filter badge */}
+                    {activeFilterCount > 0 && (
+                        <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
+                            background: 'rgba(99, 102, 241, 0.2)',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: '500',
+                            color: 'var(--accent-primary)'
+                        }}>
+                            {activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''} active
+                        </span>
+                    )}
+                    {/* Clear all filters button */}
+                    {activeFilterCount > 0 && (
+                        <button
+                            onClick={clearAllFilters}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 10px',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                color: 'var(--accent-danger)',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.background = 'rgba(239, 68, 68, 0.2)'}
+                            onMouseLeave={(e) => e.target.style.background = 'rgba(239, 68, 68, 0.1)'}
+                        >
+                            <X size={12} />
+                            Clear All
+                        </button>
+                    )}
+                </div>
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                     {/* Date Range Filter */}
                     <DateRangeFilter
@@ -666,124 +733,173 @@ export default function TransactionTable({ showToast, presetFilters }) {
                 </div>
             </div>
 
-            <div style={{ overflowX: 'auto' }}>
-                <table className="transaction-table">
-                    <thead>
-                        <tr>
-                            <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
-                                Date <SortIcon field="date" />
-                            </th>
-                            <th>Description</th>
-                            <th onClick={() => handleSort('merchant')} style={{ cursor: 'pointer' }}>
-                                Merchant <SortIcon field="merchant" />
-                            </th>
-                            <th>Category</th>
-                            <th onClick={() => handleSort('amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>
-                                Amount <SortIcon field="amount" />
-                            </th>
-                            <th>Account</th>
-                            <th style={{ width: '100px' }}>Person</th>
-                            <th style={{ width: '40px' }}></th>
-                        </tr>
-                    </thead>
-                    <tbody key={`${categoryFilter} -${accountFilter} -${search} `}>
-                        {displayedTransactions.map((t) => (
-                            <TransactionRow
-                                key={t.id}
-                                transaction={t}
-                                isExiting={exitingIds.has(t.id)}
-                                globalRenames={globalRenames}
-                                personName={personNames[t.id]}
-                                people={sortedPeople}
-                                onAssignPerson={(name) => assignName(t.id, name)}
-                                onRemovePerson={() => removeName(t.id)}
-                                onCategoryChange={(cat) => handleCategoryChange(t, cat)}
-                                onAddToRecurring={() => addToRecurring(t)}
-                                isRecurring={isRecurring(t)}
-                                isAddingToRecurring={isAddingRecurring === t.id}
-                                chargeAssignment={chargeAssignments[getTransactionId(t)]}
-                                effectiveName={(() => {
-                                    const txnId = getTransactionId(t);
-                                    // Priority 1: Charge assignment redirect
-                                    if (chargeAssignments[txnId]) {
-                                        return effectiveNames[chargeAssignments[txnId]];
-                                    }
-                                    // Priority 2: Try merchantKey with amount suffix (e.g., "paypal-25.98")
-                                    const baseKey = getMerchantKey(t.description);
-                                    const amount = Math.abs(t.debit || t.credit || t.amount || 0).toFixed(2);
-                                    const amountKey = `${baseKey}-${amount}`;
-                                    if (effectiveNames[amountKey]) {
-                                        return effectiveNames[amountKey];
-                                    }
-                                    // Priority 3: Try base merchantKey
-                                    return effectiveNames[baseKey];
-                                })()}
-                            />
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            {/* Empty state when filters return no results */}
+            {allFilteredTransactions.length === 0 && transactions.length > 0 ? (
+                <div style={{
+                    textAlign: 'center',
+                    padding: '48px 24px',
+                    background: 'rgba(99, 102, 241, 0.05)',
+                    borderRadius: '12px',
+                    border: '1px dashed var(--border-color)'
+                }}>
+                    <Search size={48} style={{ color: 'var(--text-secondary)', marginBottom: '16px', opacity: 0.5 }} />
+                    <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '8px', color: 'var(--text-primary)' }}>
+                        No transactions match your filters
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                        Try adjusting your search or filter criteria
+                    </div>
+                    <button
+                        onClick={clearAllFilters}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '10px 20px',
+                            background: 'var(--gradient-primary)',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            color: 'white',
+                            cursor: 'pointer',
+                            transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.target.style.transform = 'translateY(-2px)';
+                            e.target.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.transform = 'translateY(0)';
+                            e.target.style.boxShadow = 'none';
+                        }}
+                    >
+                        <X size={14} />
+                        Clear All Filters
+                    </button>
+                </div>
+            ) : (
+                <>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="transaction-table">
+                            <thead>
+                                <tr>
+                                    <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
+                                        Date <SortIcon field="date" />
+                                    </th>
+                                    <th>Description</th>
+                                    <th onClick={() => handleSort('merchant')} style={{ cursor: 'pointer' }}>
+                                        Merchant <SortIcon field="merchant" />
+                                    </th>
+                                    <th>Category</th>
+                                    <th onClick={() => handleSort('amount')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+                                        Amount <SortIcon field="amount" />
+                                    </th>
+                                    <th>Account</th>
+                                    <th style={{ width: '100px' }}>Person</th>
+                                    <th style={{ width: '40px' }}></th>
+                                </tr>
+                            </thead>
+                            <tbody key={`${categoryFilter} -${accountFilter} -${search} `}>
+                                {displayedTransactions.map((t) => (
+                                    <TransactionRow
+                                        key={t.id}
+                                        transaction={t}
+                                        isExiting={exitingIds.has(t.id)}
+                                        globalRenames={globalRenames}
+                                        personName={personNames[t.id]}
+                                        people={sortedPeople}
+                                        onAssignPerson={(name) => assignName(t.id, name)}
+                                        onRemovePerson={() => removeName(t.id)}
+                                        onCategoryChange={(cat) => handleCategoryChange(t, cat)}
+                                        onAddToRecurring={() => addToRecurring(t)}
+                                        isRecurring={isRecurring(t)}
+                                        isAddingToRecurring={isAddingRecurring === t.id}
+                                        chargeAssignment={chargeAssignments[getTransactionId(t)]}
+                                        effectiveName={(() => {
+                                            const txnId = getTransactionId(t);
+                                            // Priority 1: Charge assignment redirect
+                                            if (chargeAssignments[txnId]) {
+                                                return effectiveNames[chargeAssignments[txnId]];
+                                            }
+                                            // Priority 2: Try merchantKey with amount suffix (e.g., "paypal-25.98")
+                                            const baseKey = getMerchantKey(t.description);
+                                            const amount = Math.abs(t.debit || t.credit || t.amount || 0).toFixed(2);
+                                            const amountKey = `${baseKey}-${amount}`;
+                                            if (effectiveNames[amountKey]) {
+                                                return effectiveNames[amountKey];
+                                            }
+                                            // Priority 3: Try base merchantKey
+                                            return effectiveNames[baseKey];
+                                        })()}
+                                    />
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
 
-            {/* Totals Summary */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginTop: '16px',
-                padding: '16px',
-                background: typeFilter === 'income' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)',
-                borderRadius: '8px',
-                border: `1px solid ${typeFilter === 'income' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(99, 102, 241, 0.3)'} `
-            }}>
-                <div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                        {typeFilter === 'income' ? 'Total Income' : typeFilter === 'spending' ? (categoryFilter !== 'all' ? `${categoryFilter} Total` : 'Total Spent') : 'Net Total'}
+                    {/* Totals Summary */}
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginTop: '16px',
+                        padding: '16px',
+                        background: typeFilter === 'income' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)',
+                        borderRadius: '8px',
+                        border: `1px solid ${typeFilter === 'income' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(99, 102, 241, 0.3)'} `
+                    }}>
+                        <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                                {typeFilter === 'income' ? 'Total Income' : typeFilter === 'spending' ? (categoryFilter !== 'all' ? `${categoryFilter} Total` : 'Total Spent') : 'Net Total'}
+                            </div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: '700', color: typeFilter === 'income' ? 'var(--accent-success)' : 'var(--accent-primary)' }}>
+                                {typeFilter === 'income'
+                                    ? `+ $${totals.totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
+                                    : typeFilter === 'spending'
+                                        ? `- $${totals.totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
+                                        : `$${(totals.totalCredit - totals.totalDebit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
+                                }
+                            </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                                Transactions
+                            </div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>
+                                {totals.count}
+                            </div>
+                        </div>
                     </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '700', color: typeFilter === 'income' ? 'var(--accent-success)' : 'var(--accent-primary)' }}>
-                        {typeFilter === 'income'
-                            ? `+ $${totals.totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
-                            : typeFilter === 'spending'
-                                ? `- $${totals.totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
-                                : `$${(totals.totalCredit - totals.totalDebit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
-                        }
-                    </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                        Transactions
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>
-                        {totals.count}
-                    </div>
-                </div>
-            </div>
 
-            {/* Pagination Controls */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                    Showing {displayedTransactions.length} of {allFilteredTransactions.length} transactions
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    {hasMore && (
-                        <>
-                            <button
-                                onClick={() => setDisplayCount(prev => prev + 50)}
-                                className="btn"
-                                style={{ background: 'rgba(255, 255, 255, 0.1)', color: 'white', padding: '8px 16px' }}
-                            >
-                                Load More
-                            </button>
-                            <button
-                                onClick={() => setDisplayCount(allFilteredTransactions.length)}
-                                className="btn btn-primary"
-                                style={{ padding: '8px 16px' }}
-                            >
-                                Show All ({allFilteredTransactions.length})
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
+                    {/* Pagination Controls */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                            Showing {displayedTransactions.length} of {allFilteredTransactions.length} transactions
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            {hasMore && (
+                                <>
+                                    <button
+                                        onClick={() => setDisplayCount(prev => prev + 50)}
+                                        className="btn"
+                                        style={{ background: 'rgba(255, 255, 255, 0.1)', color: 'white', padding: '8px 16px' }}
+                                    >
+                                        Load More
+                                    </button>
+                                    <button
+                                        onClick={() => setDisplayCount(allFilteredTransactions.length)}
+                                        className="btn btn-primary"
+                                        style={{ padding: '8px 16px' }}
+                                    >
+                                        Show All ({allFilteredTransactions.length})
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
 
             {/* Duplicate Recurring Modal */}
             <DuplicateRecurringModal

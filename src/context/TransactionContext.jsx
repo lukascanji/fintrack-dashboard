@@ -158,6 +158,22 @@ export function TransactionProvider({ children }) {
         } catch { return {}; }
     });
 
+    // Smart Consolidation: dismissed suggestions (hidden until data changes)
+    const [dismissedSuggestions, setDismissedSuggestions] = useState(() => {
+        try {
+            const saved = localStorage.getItem('fintrack_dismissed_suggestions');
+            return saved ? JSON.parse(saved) : {};
+        } catch { return {}; }
+    });
+
+    // Smart Consolidation: consolidated items (locked, don't re-suggest)
+    const [consolidatedItems, setConsolidatedItems] = useState(() => {
+        try {
+            const saved = localStorage.getItem('fintrack_consolidated_items');
+            return saved ? JSON.parse(saved) : {};
+        } catch { return {}; }
+    });
+
     // --- Persistence Effects ---
     useEffect(() => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeTransactions(transactions)));
@@ -174,6 +190,29 @@ export function TransactionProvider({ children }) {
     useEffect(() => {
         localStorage.setItem(MANUAL_RECURRING_KEY, JSON.stringify(manualRecurring));
     }, [manualRecurring]);
+
+    // --- Orphan Cleanup Effect (runs once on app load) ---
+    useEffect(() => {
+        // Clean up orphan manual recurring entries: $0 amount AND no assigned transactions
+        const orphansRemoved = [];
+        const cleaned = manualRecurring.filter(m => {
+            const hasAssignedTxns = Object.values(chargeAssignments).includes(m.merchantKey);
+            const hasAmount = (m.amount || 0) > 0 || (m.latestAmount || 0) > 0;
+
+            // Orphan = no transactions AND no amount
+            const isOrphan = !hasAssignedTxns && !hasAmount;
+            if (isOrphan) {
+                orphansRemoved.push(m.merchant || m.merchantKey);
+                return false;
+            }
+            return true;
+        });
+
+        if (orphansRemoved.length > 0) {
+            console.log(`🧹 Cleaned up ${orphansRemoved.length} orphan entries:`, orphansRemoved);
+            setManualRecurring(cleaned);
+        }
+    }, []); // Run once on mount
 
     useEffect(() => {
         localStorage.setItem(CHARGE_ASSIGNMENTS_KEY, JSON.stringify(chargeAssignments));
@@ -226,6 +265,14 @@ export function TransactionProvider({ children }) {
     useEffect(() => {
         localStorage.setItem(SUBSCRIPTION_RULES_KEY, JSON.stringify(subscriptionRules));
     }, [subscriptionRules]);
+
+    useEffect(() => {
+        localStorage.setItem('fintrack_dismissed_suggestions', JSON.stringify(dismissedSuggestions));
+    }, [dismissedSuggestions]);
+
+    useEffect(() => {
+        localStorage.setItem('fintrack_consolidated_items', JSON.stringify(consolidatedItems));
+    }, [consolidatedItems]);
 
     // --- Actions ---
     const addTransactions = useCallback((newTransactions) => {
@@ -379,7 +426,13 @@ export function TransactionProvider({ children }) {
         setSettlements,
 
         subscriptionRules,
-        setSubscriptionRules
+        setSubscriptionRules,
+
+        dismissedSuggestions,
+        setDismissedSuggestions,
+
+        consolidatedItems,
+        setConsolidatedItems
     };
 
     return (

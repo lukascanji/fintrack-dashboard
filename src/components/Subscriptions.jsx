@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { GitMerge, X, Search } from 'lucide-react';
+import { GitMerge, X, Search, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 import SplitChargesModal from './SplitChargesModal';
 import ImportSubscriptionsModal from './ImportSubscriptionsModal';
@@ -10,6 +10,9 @@ import { useTransactions } from '../context/TransactionContext';
 import RecurringStats from '../features/recurring/components/RecurringStats';
 import RecurringList from '../features/recurring/components/RecurringList';
 import PendingReviewList from '../features/recurring/components/PendingReviewList';
+import DeniedList from '../features/recurring/components/DeniedList';
+import SmartSuggestionsPanel from '../features/recurring/components/SmartSuggestionsPanel';
+import { detectConsolidationSuggestions, generateMergedName } from '../features/recurring/utils/subscriptionConsolidator';
 
 const APPROVED_KEY = 'fintrack_recurring_approved';
 const DENIED_KEY = 'fintrack_recurring_denied';
@@ -58,6 +61,10 @@ export default function Subscriptions() {
         setCustomNames,
         subscriptionRules,
         setSubscriptionRules,
+        dismissedSuggestions,
+        setDismissedSuggestions,
+        consolidatedItems,
+        setConsolidatedItems,
     } = useTransactions();
 
     const subscriptions = useMemo(() => detectSubscriptions(transactions), [transactions]);
@@ -71,6 +78,18 @@ export default function Subscriptions() {
     const [mergedName, setMergedName] = useState('');
     const [mergeTarget, setMergeTarget] = useState('new'); // 'new' or an existing merchantKey
     const [importModalOpen, setImportModalOpen] = useState(false);
+
+    // Sidebar collapsed state with persistence
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+        const saved = localStorage.getItem('fintrack_recurring_sidebar_collapsed');
+        return saved === 'true';
+    });
+
+    const toggleSidebar = () => {
+        const newValue = !sidebarCollapsed;
+        setSidebarCollapsed(newValue);
+        localStorage.setItem('fintrack_recurring_sidebar_collapsed', String(newValue));
+    };
 
     // Search and filter state
     const [search, setSearch] = useState('');
@@ -250,6 +269,11 @@ export default function Subscriptions() {
         );
     }, [subscriptions, approved, denied]);
 
+    // Get full subscription data for denied items
+    const deniedSubscriptions = useMemo(() => {
+        return subscriptions.filter(s => denied.includes(s.merchantKey));
+    }, [subscriptions, denied]);
+
     const approvedSubscriptions = useMemo(() => {
         return subscriptions.filter(s => approved.includes(s.merchantKey));
     }, [subscriptions, approved]);
@@ -259,6 +283,8 @@ export default function Subscriptions() {
         const dates = transactions.map(t => new Date(t.date));
         return new Date(Math.max(...dates));
     }, [transactions]);
+
+    // Note: consolidationSuggestions will be computed after allApprovedItems is ready
 
     // Merge manual recurring items into approved items
     const allApprovedItems = useMemo(() => {
@@ -319,16 +345,46 @@ export default function Subscriptions() {
 
                 if (combinedTransactions.length === 0 && item.allTransactions?.length > 0) return null;
 
-                const amounts = combinedTransactions.map(t => t.amount || t.debit || t.credit || 0);
-                const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : 0;
-                const totalSpent = amounts.reduce((a, b) => a + b, 0);
+                // Sort transactions by date (newest first) for correct amount derivation
+                const sortedByDate = [...combinedTransactions].sort((a, b) =>
+                    new Date(b.date) - new Date(a.date)
+                );
+
+                // latestAmount is from the MOST RECENT transaction (first in sorted array)
+                const latestAmount = sortedByDate.length > 0
+                    ? (sortedByDate[0].amount || sortedByDate[0].debit || sortedByDate[0].credit || 0)
+                    : 0;
+                const totalSpent = combinedTransactions.reduce((sum, t) =>
+                    sum + (t.amount || t.debit || t.credit || 0), 0
+                );
+
+                // Recalculate nextDate from latest transaction
+                let nextDate = item.nextDate ? new Date(item.nextDate) : new Date();
+                if (sortedByDate.length > 0) {
+                    const lastDate = new Date(sortedByDate[0].date);
+                    nextDate = new Date(lastDate);
+                    // Add appropriate interval based on frequency
+                    if (item.frequency === 'Weekly') nextDate.setDate(nextDate.getDate() + 7);
+                    else if (item.frequency === 'Bi-Weekly') nextDate.setDate(nextDate.getDate() + 14);
+                    else if (item.frequency === 'Quarterly') nextDate.setMonth(nextDate.getMonth() + 3);
+                    else if (item.frequency === 'Yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
+                    else nextDate.setMonth(nextDate.getMonth() + 1); // Default to monthly
+                }
 
                 // Calculate status
                 let gracePeriod = 20;
                 if (item.frequency === 'Yearly' || item.frequency === 'Quarterly') gracePeriod = 45;
-                const expiryThreshold = new Date(item.nextDate);
+                const expiryThreshold = new Date(nextDate);
                 expiryThreshold.setDate(expiryThreshold.getDate() + gracePeriod);
                 const status = datasetEndDate > expiryThreshold ? 'Expired' : 'Active';
+
+                // Recalculate firstDate and lastDate from combinedTransactions
+                // CRITICAL for merge detection after splits
+                const sortedAsc = [...combinedTransactions].sort((a, b) =>
+                    new Date(a.date) - new Date(b.date)
+                );
+                const recalcFirstDate = sortedAsc.length > 0 ? new Date(sortedAsc[0].date) : item.firstDate;
+                const recalcLastDate = sortedAsc.length > 0 ? new Date(sortedAsc[sortedAsc.length - 1].date) : item.lastDate;
 
                 return {
                     ...item,
@@ -336,6 +392,9 @@ export default function Subscriptions() {
                     count: combinedTransactions.length,
                     latestAmount,
                     totalSpent,
+                    nextDate, // Use recalculated nextDate
+                    firstDate: recalcFirstDate, // Recalculated from actual transactions
+                    lastDate: recalcLastDate,   // Recalculated from actual transactions
                     status,
                     // Mark as merged if this item has a mergedSubscriptions entry (was a merge target)
                     isMerged: !!mergedSubscriptions[item.merchantKey]
@@ -347,8 +406,25 @@ export default function Subscriptions() {
 
         // Manual items: include those NOT already in processedApproved (detected subscriptions)
         // This allows manually added items to show, even if auto-approved
+        // Also filter out orphan entries (no transactions assigned AND $0 amount)
         const manualItems = manualRecurring
-            .filter(m => !processedApprovedKeys.has(m.merchantKey))
+            .filter(m => {
+                // Skip if already in processedApproved
+                if (processedApprovedKeys.has(m.merchantKey)) return false;
+
+                // Check for orphan: $0 amount AND no assigned transactions
+                const hasAssignedTxns = (assignmentsByTarget[m.merchantKey] || []).length > 0;
+                const hasAmount = (m.amount || 0) > 0 || (m.latestAmount || 0) > 0;
+
+                // Orphan = no transactions AND no amount
+                const isOrphan = !hasAssignedTxns && !hasAmount;
+                if (isOrphan) {
+                    console.log(`Subscription: Hiding orphan entry "${m.merchant}" (no transactions, $0 amount)`);
+                    return false;
+                }
+
+                return true;
+            })
             .map(m => {
                 const assignedTxnIds = new Set(assignmentsByTarget[m.merchantKey] || []);
                 const assignedTransactions = transactions.filter(t =>
@@ -412,16 +488,22 @@ export default function Subscriptions() {
                     assignedTxnIds.has(getTransactionId(t))
                 );
 
-                const amounts = assignedTransactions.map(t => t.debit || t.credit || t.amount || 0);
-                const latestAmount = amounts.length > 0 ? amounts[amounts.length - 1] : 0;
-                const totalSpent = amounts.reduce((a, b) => a + b, 0);
+                // Sort by date (newest first) for correct latestAmount
+                const sortedByDate = assignedTransactions.length > 0
+                    ? [...assignedTransactions].sort((a, b) => new Date(b.date) - new Date(a.date))
+                    : [];
+
+                // latestAmount from MOST RECENT transaction
+                const latestAmount = sortedByDate.length > 0
+                    ? (sortedByDate[0].debit || sortedByDate[0].credit || sortedByDate[0].amount || 0)
+                    : 0;
+                const totalSpent = assignedTransactions.reduce((sum, t) =>
+                    sum + (t.debit || t.credit || t.amount || 0), 0
+                );
 
                 // Calc next date based on most recent transaction + 1 month
                 let nextDate = new Date(datasetEndDate.getTime() + 30 * 24 * 60 * 60 * 1000); // Default
-                if (assignedTransactions.length > 0) {
-                    const sortedByDate = [...assignedTransactions].sort((a, b) =>
-                        new Date(b.date) - new Date(a.date)
-                    );
+                if (sortedByDate.length > 0) {
                     const lastDate = new Date(sortedByDate[0].date);
                     nextDate = new Date(lastDate);
                     nextDate.setMonth(nextDate.getMonth() + 1);
@@ -468,6 +550,133 @@ export default function Subscriptions() {
     }, [allApprovedItems, mergeSelected]);
 
     const totalToMerge = itemsToMerge.reduce((sum, s) => sum + s.latestAmount, 0);
+
+    // Smart Consolidation: detect merge/split suggestions
+    const consolidationSuggestions = useMemo(() => {
+        return detectConsolidationSuggestions(
+            allApprovedItems,
+            dismissedSuggestions,
+            consolidatedItems
+        );
+    }, [allApprovedItems, dismissedSuggestions, consolidatedItems]);
+
+    // Handle approving a consolidation suggestion
+    const handleApproveConsolidation = (suggestion) => {
+        if (suggestion.type === 'merge') {
+            // Use existing merge logic
+            const keysToMerge = suggestion.items.map(i => i.merchantKey);
+            const mergedName = suggestion.mergedName || generateMergedName(suggestion.items, globalRenames);
+
+            // Create merged subscription key
+            const targetKey = `merged_${Date.now()}`;
+
+            // Collect all transactions from items being merged
+            const allTxnIds = [];
+            const allAmounts = new Set();
+            const allAffiliations = new Set();
+            let avgBillingDay = null;
+
+            suggestion.items.forEach(item => {
+                (item.allTransactions || []).forEach(txn => {
+                    allTxnIds.push(getTransactionId(txn));
+                    const amount = txn.debit || txn.amount || 0;
+                    if (amount > 0) allAmounts.add(parseFloat(amount.toFixed(2)));
+                });
+
+                // Collect affiliation from merchant key
+                const affiliation = (item.baseMerchant || item.merchant || '').split(' ')[0].toUpperCase();
+                if (affiliation) allAffiliations.add(affiliation);
+
+                // Also add item's latestAmount
+                if (item.latestAmount) allAmounts.add(parseFloat(item.latestAmount.toFixed(2)));
+            });
+
+            // Calculate average billing day from all transactions
+            const billingDays = [];
+            suggestion.items.forEach(item => {
+                (item.allTransactions || []).forEach(txn => {
+                    const date = new Date(txn.date);
+                    billingDays.push(date.getDate());
+                });
+            });
+            if (billingDays.length > 0) {
+                avgBillingDay = Math.round(billingDays.reduce((a, b) => a + b, 0) / billingDays.length);
+            }
+
+            // Update chargeAssignments to point to new merged key
+            const newAssignments = { ...chargeAssignments };
+            allTxnIds.forEach(txnId => {
+                newAssignments[txnId] = targetKey;
+            });
+            setChargeAssignments(newAssignments);
+
+            // Create merged subscription entry
+            setMergedSubscriptions(prev => ({
+                ...prev,
+                [targetKey]: {
+                    displayName: mergedName,
+                    mergedFrom: keysToMerge,
+                    createdAt: new Date().toISOString(),
+                    category: suggestion.items[0]?.effectiveCategory || 'OTHER'
+                }
+            }));
+
+            // Mark as consolidated (locked)
+            setConsolidatedItems(prev => ({
+                ...prev,
+                ...Object.fromEntries(keysToMerge.map(k => [k, {
+                    type: 'merge',
+                    createdAt: new Date().toISOString(),
+                    targetKey
+                }]))
+            }));
+
+            // Add rename
+            setGlobalRenames(prev => ({
+                ...prev,
+                [targetKey]: { displayName: mergedName }
+            }));
+
+            // Generate subscription rule for future imports
+            const newRule = {
+                serviceName: mergedName,
+                affiliation: [...allAffiliations][0] || 'OTHER', // Primary affiliation
+                billingDay: avgBillingDay,
+                amounts: [...allAmounts],
+                targetKey: targetKey,
+                createdAt: new Date().toISOString(),
+                createdBy: 'merge'
+            };
+            setSubscriptionRules(prev => ({
+                ...prev,
+                [targetKey]: newRule
+            }));
+
+            console.log(`✅ Merged ${keysToMerge.length} items into "${mergedName}" with rule:`, newRule);
+
+        } else if (suggestion.type === 'split') {
+            // Open split modal with pre-populated data
+            const item = suggestion.items[0];
+            if (item) {
+                setSubscriptionToSplit({
+                    ...item,
+                    suggestedSplits: suggestion.suggestedSplits
+                });
+                setSplitChargesModalOpen(true);
+            }
+        }
+    };
+
+    // Handle dismissing a suggestion
+    const handleDismissSuggestion = (suggestion) => {
+        setDismissedSuggestions(prev => ({
+            ...prev,
+            [suggestion.id]: {
+                dataHash: suggestion.dataHash,
+                dismissedAt: new Date().toISOString()
+            }
+        }));
+    };
 
     const approveItem = (merchantKey) => {
         setApproved(prev => {
@@ -639,6 +848,14 @@ export default function Subscriptions() {
 
     return (
         <div style={{ display: 'flex', gap: '24px', flexDirection: 'column' }}>
+            {/* Smart Consolidation Suggestions */}
+            <SmartSuggestionsPanel
+                suggestions={consolidationSuggestions}
+                onApprove={handleApproveConsolidation}
+                onDismiss={handleDismissSuggestion}
+                globalRenames={globalRenames}
+            />
+
             {/* Header Stats & Controls */}
             <div className="card">
                 <RecurringStats
@@ -774,12 +991,70 @@ export default function Subscriptions() {
                     onDelete={deleteRecurringItem}
                 />
 
-                {/* Sidebar */}
-                <PendingReviewList
-                    pendingItems={pendingItems}
-                    onApprove={approveItem}
-                    onDeny={denyItem}
-                />
+
+                {/* Collapsible Sidebar */}
+                <div style={{
+                    width: sidebarCollapsed ? '48px' : '320px',
+                    flexShrink: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '16px',
+                    position: 'sticky',
+                    top: '24px',
+                    alignSelf: 'flex-start',
+                    maxHeight: 'calc(100vh - 120px)',
+                    overflowY: sidebarCollapsed ? 'visible' : 'auto',
+                    transition: 'width 0.2s ease'
+                }}>
+                    {/* Toggle Button */}
+                    <button
+                        onClick={toggleSidebar}
+                        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                        style={{
+                            padding: '8px',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            fontSize: '0.8rem',
+                            width: sidebarCollapsed ? '40px' : '100%'
+                        }}
+                    >
+                        {sidebarCollapsed ? (
+                            <PanelRightOpen size={18} />
+                        ) : (
+                            <>
+                                <PanelRightClose size={18} />
+                                <span>Hide Sidebar</span>
+                            </>
+                        )}
+                    </button>
+
+                    {/* Sidebar content - only show when not collapsed */}
+                    {!sidebarCollapsed && (
+                        <>
+                            <PendingReviewList
+                                pendingItems={pendingItems}
+                                onApprove={approveItem}
+                                onDeny={denyItem}
+                            />
+
+                            {/* Denied items section */}
+                            <DeniedList
+                                deniedItems={deniedSubscriptions}
+                                onRevert={(key) => {
+                                    // Remove from denied list - will return to pending
+                                    setDenied(prev => prev.filter(k => k !== key));
+                                }}
+                            />
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Modals */}
@@ -830,6 +1105,48 @@ export default function Subscriptions() {
                                     createdAt: new Date().toISOString()
                                 }
                             }));
+
+                            // Generate subscription rules for each new split target
+                            const newRules = {};
+                            Object.entries(splitToTargets).forEach(([targetKey, txnIds]) => {
+                                // Find the transactions for this target
+                                const targetTxns = (subscriptionToSplit.allTransactions || [])
+                                    .filter(t => txnIds.includes(getTransactionId(t)));
+
+                                if (targetTxns.length > 0) {
+                                    // Calculate billing day from transactions
+                                    const days = targetTxns.map(t => new Date(t.date).getDate());
+                                    const avgDay = Math.round(days.reduce((a, b) => a + b, 0) / days.length);
+
+                                    // Collect amounts
+                                    const amounts = [...new Set(targetTxns.map(t =>
+                                        parseFloat((t.debit || t.amount || 0).toFixed(2))
+                                    ))].filter(a => a > 0);
+
+                                    // Get affiliation from source subscription
+                                    const affiliation = (subscriptionToSplit.baseMerchant ||
+                                        subscriptionToSplit.merchant || '').split(' ')[0].toUpperCase();
+
+                                    // Find display name for this target
+                                    const createdSub = (createdSubs || []).find(s => s.merchantKey === targetKey);
+                                    const displayName = createdSub?.displayName || createdSub?.merchant || targetKey;
+
+                                    newRules[targetKey] = {
+                                        serviceName: displayName,
+                                        affiliation: affiliation || 'OTHER',
+                                        billingDay: avgDay,
+                                        amounts: amounts,
+                                        targetKey: targetKey,
+                                        createdAt: new Date().toISOString(),
+                                        createdBy: 'split'
+                                    };
+                                }
+                            });
+
+                            if (Object.keys(newRules).length > 0) {
+                                setSubscriptionRules(prev => ({ ...prev, ...newRules }));
+                                console.log(`✅ Generated ${Object.keys(newRules).length} rules from split:`, newRules);
+                            }
                         }
                     }}
                 />
@@ -1071,28 +1388,77 @@ export default function Subscriptions() {
                     onImport={(importData) => {
                         const { manualRecurringEntries, chargeAssignmentUpdates, globalRenameUpdates, parsedSubscriptions } = importData;
 
-                        // Add manual recurring entries
-                        if (manualRecurringEntries.length > 0) {
+                        // === DUPLICATE PREVENTION ===
+                        // Build signatures of existing approved subscriptions (affiliation-amount)
+                        const existingApprovedSignatures = new Set();
+                        approvedSubscriptions.forEach(sub => {
+                            // Extract affiliation from merchantKey pattern
+                            const baseKey = sub.merchantKey.split('-')[0] || '';
+                            let affiliation = 'UNKNOWN';
+                            if (baseKey.startsWith('APPLE')) affiliation = 'APPLE';
+                            else if (baseKey.startsWith('AMZN') || baseKey.startsWith('AMAZON')) affiliation = 'AMAZON';
+                            else if (baseKey.startsWith('PAYPAL')) affiliation = 'PAYPAL';
+                            else if (baseKey.startsWith('GOOGLE')) affiliation = 'GOOGLE';
+
+                            const sig = `${affiliation}-${sub.latestAmount?.toFixed(2)}`;
+                            existingApprovedSignatures.add(sig);
+                        });
+
+                        // Filter out imported entries that would duplicate existing approved subscriptions
+                        const filteredManualEntries = manualRecurringEntries.filter(entry => {
+                            if (entry.affiliation && entry.latestAmount) {
+                                const entrySig = `${entry.affiliation}-${entry.latestAmount.toFixed(2)}`;
+                                if (existingApprovedSignatures.has(entrySig)) {
+                                    console.log(`Import: Skipping "${entry.merchant}" - matches existing approved subscription (${entrySig})`);
+                                    return false;
+                                }
+                            }
+                            return true;
+                        });
+
+                        const skippedCount = manualRecurringEntries.length - filteredManualEntries.length;
+                        if (skippedCount > 0) {
+                            console.log(`Import: Skipped ${skippedCount} entries that duplicate existing approved subscriptions`);
+                        }
+
+                        // Add manual recurring entries (filtered to avoid duplicates)
+                        if (filteredManualEntries.length > 0) {
                             setManualRecurring(prev => {
                                 const existing = new Set(prev.map(m => m.merchantKey));
-                                const newItems = manualRecurringEntries.filter(m => !existing.has(m.merchantKey));
+                                const newItems = filteredManualEntries.filter(m => !existing.has(m.merchantKey));
                                 return [...prev, ...newItems];
                             });
                         }
 
-                        // Update charge assignments
-                        if (Object.keys(chargeAssignmentUpdates).length > 0) {
-                            setChargeAssignments(prev => ({ ...prev, ...chargeAssignmentUpdates }));
+                        // Update charge assignments (only for non-skipped entries)
+                        const filteredKeys = new Set(filteredManualEntries.map(e => e.merchantKey));
+                        const filteredAssignments = {};
+                        Object.entries(chargeAssignmentUpdates).forEach(([txnId, targetKey]) => {
+                            if (filteredKeys.has(targetKey)) {
+                                filteredAssignments[txnId] = targetKey;
+                            }
+                        });
+
+                        if (Object.keys(filteredAssignments).length > 0) {
+                            setChargeAssignments(prev => ({ ...prev, ...filteredAssignments }));
                         }
 
-                        // Update global renames
-                        if (Object.keys(globalRenameUpdates).length > 0) {
-                            setGlobalRenames(prev => ({ ...prev, ...globalRenameUpdates }));
+                        // Update global renames (only for non-skipped entries)
+                        const filteredRenames = {};
+                        Object.entries(globalRenameUpdates).forEach(([key, rename]) => {
+                            if (filteredKeys.has(key)) {
+                                filteredRenames[key] = rename;
+                            }
+                        });
+
+                        if (Object.keys(filteredRenames).length > 0) {
+                            setGlobalRenames(prev => ({ ...prev, ...filteredRenames }));
                         }
 
                         // Generate and save subscription rules for future imports
-                        if (parsedSubscriptions && manualRecurringEntries.length > 0) {
-                            const newRules = generateSubscriptionRules(importData, parsedSubscriptions);
+                        if (parsedSubscriptions && filteredManualEntries.length > 0) {
+                            const filteredImportData = { ...importData, manualRecurringEntries: filteredManualEntries };
+                            const newRules = generateSubscriptionRules(filteredImportData, parsedSubscriptions);
                             if (Object.keys(newRules).length > 0) {
                                 setSubscriptionRules(prev => ({ ...prev, ...newRules }));
                             }

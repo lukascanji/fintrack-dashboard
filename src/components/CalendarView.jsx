@@ -161,6 +161,10 @@ export default function CalendarView() {
         const allProjectableSubs = [];
         const processedKeys = new Set();
 
+        // Track amount signatures from approved items to detect duplicates
+        // Format: "AFFILIATION-AMOUNT" e.g., "APPLE-19.20"
+        const approvedAmountSignatures = new Set();
+
         // 1. Add approved detected subscriptions
         subscriptions
             .filter(sub => approved.includes(sub.merchantKey))
@@ -175,6 +179,18 @@ export default function CalendarView() {
                 if (wasSplit) return;
 
                 processedKeys.add(sub.merchantKey);
+
+                // Build amount signature for deduplication
+                const baseKey = sub.merchantKey.split('-')[0] || '';
+                let affiliation = 'UNKNOWN';
+                if (baseKey.startsWith('APPLE')) affiliation = 'APPLE';
+                else if (baseKey.startsWith('AMZN') || baseKey.startsWith('AMAZON')) affiliation = 'AMAZON';
+                else if (baseKey.startsWith('PAYPAL')) affiliation = 'PAYPAL';
+                else if (baseKey.startsWith('GOOGLE')) affiliation = 'GOOGLE';
+
+                const amountSig = `${affiliation}-${sub.latestAmount?.toFixed(2)}`;
+                approvedAmountSignatures.add(amountSig);
+
                 allProjectableSubs.push({
                     merchantKey: sub.merchantKey,
                     merchant: effectiveNames[sub.merchantKey] || sub.merchant,
@@ -187,6 +203,17 @@ export default function CalendarView() {
         // 2. Add manual recurring items (splits) - calculate timing from assigned transactions
         manualRecurring.forEach(manual => {
             if (processedKeys.has(manual.merchantKey)) return;
+
+            // DEDUP: Skip if this manual item duplicates an approved subscription
+            // by having the same affiliation and amount
+            if (manual.affiliation && manual.latestAmount) {
+                const manualSig = `${manual.affiliation}-${manual.latestAmount.toFixed(2)}`;
+                if (approvedAmountSignatures.has(manualSig)) {
+                    console.log(`Calendar: Skipping duplicate manual item ${manual.merchantKey} (matches approved sig: ${manualSig})`);
+                    return;
+                }
+            }
+
             processedKeys.add(manual.merchantKey);
 
             // Find transactions assigned to this manual subscription

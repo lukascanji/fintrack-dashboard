@@ -52,6 +52,46 @@ body {
   flex-direction: column;
   position: fixed;
   height: 100vh;
+  box-sizing: border-box;
+  transition: width 0.25s ease, padding 0.25s ease;
+  z-index: 100;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Sidebar scrollbar styling */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Collapsed sidebar */
+.sidebar.collapsed {
+  width: 60px;
+  padding: 24px 12px;
+}
+
+.sidebar.collapsed .sidebar-logo {
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 12px 8px;
+  gap: 0;
 }
 
 .sidebar-logo {
@@ -62,6 +102,8 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   margin-bottom: 32px;
+  display: flex;
+  align-items: center;
 }
 
 .sidebar-nav {
@@ -80,6 +122,8 @@ body {
   text-decoration: none;
   transition: all 0.2s ease;
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .nav-item:hover,
@@ -93,6 +137,32 @@ body {
   margin-left: 260px;
   padding: 32px;
   background: var(--bg-primary);
+  transition: margin-left 0.25s ease, opacity 0.15s ease;
+}
+
+.main-content.sidebar-collapsed {
+  margin-left: 60px;
+}
+
+/* Page transition animation */
+.main-content.transitioning {
+  opacity: 0.7;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.main-content>* {
+  animation: fadeIn 0.2s ease-out;
 }
 
 /* Cards */

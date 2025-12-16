@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { LayoutDashboard, Upload, Receipt, Settings, Wallet, RefreshCw, Trash2, CalendarDays, Download, Users, FileText, GitBranch } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { LayoutDashboard, Upload, Receipt, Settings, Wallet, RefreshCw, Trash2, CalendarDays, Download, Users, FileText, GitBranch, ChevronLeft, ChevronRight } from 'lucide-react';
 import FileUpload from './components/FileUpload';
 import KPICards from './components/KPICards';
 import SpendingChart from './components/SpendingChart';
@@ -33,17 +33,86 @@ function App() {
   // Shared filter state for cross-component navigation (e.g., Sankey -> Transactions)
   const [transactionFilters, setTransactionFilters] = useState(null);
 
+  // Sidebar collapse state with persistence
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('fintrack_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Page transition state
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Ref for main content scroll
+  const mainContentRef = useRef(null);
+
+  // Toggle sidebar collapse
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const newState = !prev;
+      localStorage.setItem('fintrack_sidebar_collapsed', String(newState));
+      return newState;
+    });
+  }, []);
+
+  // Handle tab change from sidebar - resets filters and scrolls to top
+  const handleTabChange = useCallback((view) => {
+    // Start transition animation
+    setIsTransitioning(true);
+
+    // Reset all filters to default
+    setTransactionFilters(null);
+    setDateRange('all');
+    setCustomDateRange({ start: null, end: null });
+
+    // Scroll to top smoothly
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Set the new view
+    setActiveView(view);
+
+    // End transition after brief delay
+    setTimeout(() => setIsTransitioning(false), 150);
+  }, []);
+
   // Show toast notification
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type, key: Date.now() });
   }, []);
 
-  // Handle navigation from Sankey to Transactions with preset filters
+  // Handle navigation from Sankey to Transactions with preset filters (preserves filters)
   const handleNavigateToTransactions = useCallback((filters) => {
     // Set filters first, then navigate - use object with timestamp to force update
     setTransactionFilters({ ...filters, _ts: Date.now() });
     setActiveView('transactions');
+    // Scroll to top for cross-component navigation too
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Escape key - close modals (handled by individual modals, but we can close toast)
+      if (e.key === 'Escape') {
+        setToast(null);
+      }
+
+      // Ctrl/Cmd + F - focus search when on transactions
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && activeView === 'transactions') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[placeholder="Search..."]');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeView]);
 
   // Filter transactions by date range
   const filteredTransactions = useMemo(() =>
@@ -91,68 +160,76 @@ function App() {
   return (
     <div className="app-container">
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-logo">
-          <Wallet size={24} style={{ marginRight: '8px' }} />
-          FinTrack
+          <Wallet size={24} style={{ marginRight: sidebarCollapsed ? '0' : '8px' }} />
+          {!sidebarCollapsed && 'FinTrack'}
         </div>
 
         <nav className="sidebar-nav">
           <div
             className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveView('dashboard')}
+            onClick={() => handleTabChange('dashboard')}
+            title="Dashboard"
           >
             <LayoutDashboard size={20} />
-            Dashboard
+            {!sidebarCollapsed && 'Dashboard'}
           </div>
           <div
             className={`nav-item ${activeView === 'upload' ? 'active' : ''}`}
-            onClick={() => setActiveView('upload')}
+            onClick={() => handleTabChange('upload')}
+            title="Import Data"
           >
             <Upload size={20} />
-            Import Data
+            {!sidebarCollapsed && 'Import Data'}
           </div>
           <div
             className={`nav-item ${activeView === 'transactions' ? 'active' : ''}`}
-            onClick={() => setActiveView('transactions')}
+            onClick={() => handleTabChange('transactions')}
+            title="Transactions"
           >
             <Receipt size={20} />
-            Transactions
+            {!sidebarCollapsed && 'Transactions'}
           </div>
           <div
             className={`nav-item ${activeView === 'subscriptions' ? 'active' : ''}`}
-            onClick={() => setActiveView('subscriptions')}
+            onClick={() => handleTabChange('subscriptions')}
+            title="Recurring"
           >
             <RefreshCw size={20} />
-            Recurring
+            {!sidebarCollapsed && 'Recurring'}
           </div>
           <div
             className={`nav-item ${activeView === 'calendar' ? 'active' : ''}`}
-            onClick={() => setActiveView('calendar')}
+            onClick={() => handleTabChange('calendar')}
+            title="Calendar"
           >
             <CalendarDays size={20} />
-            Calendar
+            {!sidebarCollapsed && 'Calendar'}
           </div>
           <div
             className={`nav-item ${activeView === 'flow' ? 'active' : ''}`}
-            onClick={() => setActiveView('flow')}
+            onClick={() => handleTabChange('flow')}
+            title="Flow"
           >
             <GitBranch size={20} />
-            Flow
+            {!sidebarCollapsed && 'Flow'}
           </div>
           <div
             className={`nav-item ${activeView === 'people' ? 'active' : ''}`}
-            onClick={() => setActiveView('people')}
+            onClick={() => handleTabChange('people')}
+            title="People"
           >
             <Users size={20} />
-            People
+            {!sidebarCollapsed && 'People'}
           </div>
           <div
             className={`nav-item ${activeView === 'rules' ? 'active' : ''}`}
-            onClick={() => setActiveView('rules')}
+            onClick={() => handleTabChange('rules')}
+            title="Rules"
           >
             <FileText size={20} />
-            Rules
+            {!sidebarCollapsed && 'Rules'}
           </div>
         </nav>
 
@@ -163,35 +240,48 @@ function App() {
                 className="nav-item"
                 onClick={handleExportData}
                 style={{ color: 'var(--accent-primary)' }}
+                title="Export CSV"
               >
                 <Download size={20} />
-                Export CSV
+                {!sidebarCollapsed && 'Export CSV'}
               </div>
               <div
                 className="nav-item"
                 onClick={handleClearData}
                 style={{ color: 'var(--accent-danger)' }}
+                title="Clear Data"
               >
                 <Trash2 size={20} />
-                Clear Data
+                {!sidebarCollapsed && 'Clear Data'}
               </div>
             </>
           )}
-          <div className="nav-item">
+          <div className="nav-item" title="Settings">
             <Settings size={20} />
-            Settings
+            {!sidebarCollapsed && 'Settings'}
+          </div>
+
+          {/* Sidebar collapse toggle */}
+          <div
+            className="nav-item"
+            onClick={toggleSidebar}
+            style={{ marginTop: '8px', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+            {!sidebarCollapsed && 'Collapse'}
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="main-content">
+      <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${isTransitioning ? 'transitioning' : ''}`} ref={mainContentRef}>
         {activeView === 'upload' && (
           <>
             <div className="section-header">
               <h1 className="section-title">Import Data</h1>
             </div>
-            <FileUpload />
+            <FileUpload showToast={showToast} />
           </>
         )}
 

@@ -4,6 +4,11 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 export default function PaymentTimeline({ transactions }) {
     if (!transactions || transactions.length === 0) return null;
 
+    // Sort chronologically (oldest first) for left→right timeline
+    const sortedTxns = [...transactions].sort((a, b) =>
+        new Date(a.date) - new Date(b.date)
+    );
+
     return (
         <div style={{ marginBottom: '16px' }}>
             <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '12px' }}>
@@ -21,8 +26,8 @@ export default function PaymentTimeline({ transactions }) {
                     minWidth: 'max-content',
                     paddingTop: '24px'
                 }}>
-                    {transactions.map((txn, idx) => {
-                        const prevTxn = idx > 0 ? transactions[idx - 1] : null;
+                    {sortedTxns.map((txn, idx) => {
+                        const prevTxn = idx > 0 ? sortedTxns[idx - 1] : null;
                         const amount = txn.amount || txn.debit;
                         const prevAmount = prevTxn ? (prevTxn.amount || prevTxn.debit) : 0;
                         const priceIncrease = prevTxn && (amount - prevAmount) > 0.5;
@@ -77,7 +82,7 @@ export default function PaymentTimeline({ transactions }) {
                                     border: '2px solid var(--bg-card)'
                                 }} />
                                 {/* Connecting line */}
-                                {idx < transactions.length - 1 && (
+                                {idx < sortedTxns.length - 1 && (
                                     <div style={{
                                         position: 'absolute',
                                         top: '50%',
