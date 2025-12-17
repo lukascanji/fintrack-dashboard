@@ -1,0 +1,49 @@
+.container {
+    margin-top: 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.header:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.headerLeft {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.count {
+    color: var(--text-tertiary);
+    font-weight: 400;
+}
+
+.eventList {
+    padding: 0 16px 16px;
+}
+
+.noHistory {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 16px;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-top: 16px;
+}

@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
     ChevronDown, ChevronUp, Trash2, Pencil, Tag, Layers,
-    Scissors, Users, Mail, AlertCircle
+    Scissors, Users, Mail, AlertCircle, Download, Clock, History, RefreshCw, FileText, Upload
 } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
+import { getEventLog, formatEventForDisplay, exportLog, getLogSummary } from '../utils/transformationLog';
+import { exportStateAsJSON, generateDetailedSnapshot, resetToFresh, downloadFile } from '../utils/configSnapshot';
+import { detectSubscriptions } from '../features/recurring/utils/recurringUtils';
 import styles from './Rules.module.css';
 
 /**
@@ -12,6 +15,7 @@ import styles from './Rules.module.css';
  */
 export default function Rules() {
     const {
+        transactions,
         globalRenames, setGlobalRenames,
         categoryOverrides, setCategoryOverrides,
         mergedSubscriptions, setMergedSubscriptions,
@@ -21,8 +25,12 @@ export default function Rules() {
         chargeAssignments, setChargeAssignments
     } = useTransactions();
 
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
+    const fileInputRef = useRef(null);
+
     // Expanded sections state
     const [expandedSections, setExpandedSections] = useState({
+        history: true,
         renames: true,
         categories: true,
         merges: true,
@@ -143,6 +151,27 @@ export default function Rules() {
         assignmentsByTarget[targetKey].push(txnId);
     });
 
+    // Get transformation log summary and recent events
+    const logSummary = useMemo(() => getLogSummary(), []);
+    const recentEvents = useMemo(() => {
+        const log = getEventLog();
+        return log.events.slice(-10).reverse().map(formatEventForDisplay);
+    }, []);
+
+    // Export handler
+    const handleExport = () => {
+        const jsonData = exportLog();
+        const blob = new Blob([jsonData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `fintrack_transformation_log_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     const clearAssignmentsForTarget = (targetKey) => {
         setChargeAssignments(prev => {
             const updated = { ...prev };
@@ -153,6 +182,67 @@ export default function Rules() {
             });
             return updated;
         });
+    };
+
+    // Detect recurring items for snapshot
+    const recurringItems = useMemo(() => detectSubscriptions(transactions), [transactions]);
+
+    // Handler for exporting detailed snapshot
+    const handleExportSnapshot = () => {
+        const timestamp = new Date().toISOString().split('T')[0];
+
+        // Export JSON backup
+        const jsonBackup = exportStateAsJSON();
+        downloadFile(jsonBackup, `fintrack_backup_${timestamp}.json`, 'application/json');
+
+        // Export detailed markdown
+        const markdown = generateDetailedSnapshot(transactions, recurringItems);
+        downloadFile(markdown, `fintrack_snapshot_${timestamp}.md`, 'text/markdown');
+
+        console.log('✅ Exported backup JSON and detailed markdown snapshot');
+    };
+
+    // Handler for reset
+    const handleReset = () => {
+        resetToFresh();
+        setShowResetConfirm(false);
+        window.location.reload();
+    };
+
+    // Handler for restore from backup
+    const handleRestoreClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileUpload = (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const jsonString = e.target.result;
+                const backup = JSON.parse(jsonString);
+
+                if (!backup.state) {
+                    alert('Invalid backup file format');
+                    return;
+                }
+
+                Object.entries(backup.state).forEach(([key, value]) => {
+                    localStorage.setItem(key, JSON.stringify(value));
+                });
+
+                alert(`✅ Restored ${Object.keys(backup.state).length} settings from backup`);
+                window.location.reload();
+            } catch (err) {
+                alert('Error reading backup file: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+
+        // Reset the input so same file can be selected again
+        event.target.value = '';
     };
 
     return (
@@ -180,6 +270,114 @@ export default function Rules() {
                     <span>•</span>
                     <span>{emailsCount} emails</span>
                 </div>
+                <button
+                    className={styles.exportButton}
+                    onClick={handleExport}
+                    title="Export transformation log as JSON"
+                >
+                    <Download size={14} />
+                    Export Log ({logSummary.totalEvents} events)
+                </button>
+                <div className={styles.buttonRow}>
+                    <button
+                        className={styles.snapshotButton}
+                        onClick={handleExportSnapshot}
+                        title="Export full configuration snapshot with transaction details"
+                    >
+                        <FileText size={14} />
+                        Save Snapshot
+                    </button>
+                    <button
+                        className={styles.resetButton}
+                        onClick={() => setShowResetConfirm(true)}
+                        title="Reset all rules and start fresh"
+                    >
+                        <RefreshCw size={14} />
+                        Reset to Fresh
+                    </button>
+                    <button
+                        className={styles.restoreButton}
+                        onClick={handleRestoreClick}
+                        title="Restore from JSON backup file"
+                    >
+                        <Upload size={14} />
+                        Restore Backup
+                    </button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        accept=".json"
+                        style={{ display: 'none' }}
+                    />
+                </div>
+            </div>
+
+            {/* Reset Confirmation Modal */}
+            {showResetConfirm && (
+                <div className={styles.modalOverlay} onClick={() => setShowResetConfirm(false)}>
+                    <div className={styles.modal} onClick={e => e.stopPropagation()}>
+                        <h3>⚠️ Reset All Configuration?</h3>
+                        <p>This will clear all rules: renames, merges, categories, approvals, and transformation history.</p>
+                        <p><strong>Make sure you've exported a snapshot first!</strong></p>
+                        <div className={styles.modalActions}>
+                            <button
+                                className={styles.cancelButton}
+                                onClick={() => setShowResetConfirm(false)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className={styles.confirmResetButton}
+                                onClick={handleReset}
+                            >
+                                Yes, Reset Everything
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Transformation History Section */}
+            <div className={styles.section}>
+                <div
+                    className={styles.sectionHeader}
+                    onClick={() => toggleSection('history')}
+                >
+                    <div className={styles.sectionTitle}>
+                        <History size={16} />
+                        Transformation History
+                        <span className={styles.badge}>{logSummary.totalEvents}</span>
+                    </div>
+                    {expandedSections.history ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </div>
+                {expandedSections.history && (
+                    <div className={styles.sectionContent}>
+                        {recentEvents.length === 0 ? (
+                            <div className={styles.emptyMessage}>No transformation events logged yet.</div>
+                        ) : (
+                            <div className={styles.rulesList}>
+                                {recentEvents.map(event => (
+                                    <div key={event.id} className={styles.historyItem}>
+                                        <span className={styles.historyIcon}>{event.icon}</span>
+                                        <div className={styles.historyContent}>
+                                            <span className={styles.historyDesc}>{event.description}</span>
+                                            <span className={styles.historyTime}>{event.formattedTime}</span>
+                                        </div>
+                                        <span className={`${styles.historySource} ${styles[event.triggeredBy]}`}>
+                                            {event.triggeredBy}
+                                        </span>
+                                    </div>
+                                ))}
+                                {logSummary.totalEvents > 10 && (
+                                    <div className={styles.moreEvents}>
+                                        + {logSummary.totalEvents - 10} more events (use Timeline view in Recurring tab)
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Renames Section */}

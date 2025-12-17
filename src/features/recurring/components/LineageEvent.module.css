@@ -1,0 +1,154 @@
+.event {
+    display: flex;
+    gap: 12px;
+}
+
+.timeline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 24px;
+    flex-shrink: 0;
+}
+
+.dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.colorGreen {
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.colorBlue {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.colorOrange {
+    background: rgba(245, 158, 11, 0.2);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.colorRed {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.icon {
+    font-size: 11px;
+}
+
+.line {
+    width: 2px;
+    flex: 1;
+    background: var(--border-color);
+    min-height: 16px;
+}
+
+.isLast .line {
+    display: none;
+}
+
+.content {
+    flex: 1;
+    min-width: 0;
+    padding-bottom: 12px;
+}
+
+.eventHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+    color: var(--text-primary);
+}
+
+.eventHeader:hover {
+    opacity: 0.8;
+}
+
+.eventInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+.description {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 4px;
+}
+
+.meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+}
+
+.time {
+    color: var(--text-secondary);
+}
+
+.source {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: capitalize;
+}
+
+.details {
+    margin-top: 8px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    font-size: 0.7rem;
+}
+
+.detailRow {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.detailRow:last-child {
+    margin-bottom: 0;
+}
+
+.detailLabel {
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    width: 90px;
+}
+
+.detailValue {
+    color: var(--text-secondary);
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 0.65rem;
+    word-break: break-all;
+}
+
+.detailPre {
+    margin: 0;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}

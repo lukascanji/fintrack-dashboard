@@ -1,11 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { GitMerge, X, Search, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { GitMerge, X, Search, PanelRightOpen, PanelRightClose, Clock, Undo2 } from 'lucide-react';
 import SplitMerchantModal from './SplitMerchantModal';
 import SplitChargesModal from './SplitChargesModal';
 import ImportSubscriptionsModal from './ImportSubscriptionsModal';
+import TransformationTimeline from './TransformationTimeline';
+import UndoPreviewPanel from './UndoPreviewPanel';
 import { generateSubscriptionRules } from '../utils/ruleEngine';
 import { getTransactionId } from '../utils/transactionId';
-import { detectSubscriptions } from '../features/recurring/utils/recurringUtils';
+import { logEvent, EventTypes, TriggerSources } from '../utils/transformationLog';
+import { detectSubscriptions, recalculateFrequency } from '../features/recurring/utils/recurringUtils';
 import { useTransactions } from '../context/TransactionContext';
 import RecurringStats from '../features/recurring/components/RecurringStats';
 import RecurringList from '../features/recurring/components/RecurringList';
@@ -78,6 +81,8 @@ export default function Subscriptions() {
     const [mergedName, setMergedName] = useState('');
     const [mergeTarget, setMergeTarget] = useState('new'); // 'new' or an existing merchantKey
     const [importModalOpen, setImportModalOpen] = useState(false);
+    const [showTimeline, setShowTimeline] = useState(false);
+    const [showUndo, setShowUndo] = useState(false);
 
     // Sidebar collapsed state with persistence
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -237,6 +242,17 @@ export default function Subscriptions() {
             return updated;
         });
 
+        // Log the merge transformation
+        logEvent(EventTypes.MERGE, {
+            sourceKeys: mergeSelected,
+            targetKey,
+            displayName: targetDisplayName,
+            transactionCount: Object.keys(newAssignments).length
+        }, {
+            triggeredBy: TriggerSources.USER,
+            affectedKeys: [targetKey, ...mergeSelected]
+        });
+
         setMergeSelected([]);
         setShowMergePrompt(false);
         setMergedName('');
@@ -386,12 +402,18 @@ export default function Subscriptions() {
                 const recalcFirstDate = sortedAsc.length > 0 ? new Date(sortedAsc[0].date) : item.firstDate;
                 const recalcLastDate = sortedAsc.length > 0 ? new Date(sortedAsc[sortedAsc.length - 1].date) : item.lastDate;
 
+                // Recalculate frequency from actual transactions (fixes stale frequency after merges/splits)
+                const recalculatedFreq = combinedTransactions.length >= 2
+                    ? recalculateFrequency(combinedTransactions)
+                    : item.frequency;
+
                 return {
                     ...item,
                     allTransactions: combinedTransactions,
                     count: combinedTransactions.length,
                     latestAmount,
                     totalSpent,
+                    frequency: recalculatedFreq, // Use recalculated frequency
                     nextDate, // Use recalculated nextDate
                     firstDate: recalcFirstDate, // Recalculated from actual transactions
                     lastDate: recalcLastDate,   // Recalculated from actual transactions
@@ -518,6 +540,11 @@ export default function Subscriptions() {
                     status = datasetEndDate > expiryThreshold ? 'Expired' : 'Active';
                 }
 
+                // Recalculate frequency from actual transactions
+                const freq = assignedTransactions.length >= 2
+                    ? recalculateFrequency(assignedTransactions)
+                    : 'Monthly';
+
                 return {
                     merchantKey: key,
                     merchant: data.displayName,
@@ -525,7 +552,7 @@ export default function Subscriptions() {
                     latestAmount,
                     totalSpent,
                     avgAmount: assignedTransactions.length > 0 ? totalSpent / assignedTransactions.length : 0,
-                    frequency: 'Monthly',
+                    frequency: freq, // Use recalculated frequency instead of hardcoded 'Monthly'
                     count: Math.max(assignedTransactions.length, 1),
                     isMerged: true, // Marker for specific logic if needed
                     isManual: true, // Behave like manual for some purposes
@@ -551,14 +578,15 @@ export default function Subscriptions() {
 
     const totalToMerge = itemsToMerge.reduce((sum, s) => sum + s.latestAmount, 0);
 
-    // Smart Consolidation: detect merge/split suggestions
+    // Smart Consolidation: detect merge/split/gap suggestions
     const consolidationSuggestions = useMemo(() => {
         return detectConsolidationSuggestions(
             allApprovedItems,
             dismissedSuggestions,
-            consolidatedItems
+            consolidatedItems,
+            transactions // Pass all transactions for gap detection
         );
-    }, [allApprovedItems, dismissedSuggestions, consolidatedItems]);
+    }, [allApprovedItems, dismissedSuggestions, consolidatedItems, transactions]);
 
     // Handle approving a consolidation suggestion
     const handleApproveConsolidation = (suggestion) => {
@@ -664,6 +692,126 @@ export default function Subscriptions() {
                 });
                 setSplitChargesModalOpen(true);
             }
+        } else if (suggestion.type === 'gap_candidate') {
+            // Gap candidate: assign portion of container transaction to subscription
+            const { subscription, containerTransaction, expectedAmount, containerAmount, remainder } = suggestion;
+
+            if (!subscription || !containerTransaction) {
+                console.error('Gap candidate missing subscription or container');
+                return;
+            }
+
+            const txnId = getTransactionId(containerTransaction);
+            const targetKey = subscription.merchantKey;
+
+            // Store decomposition metadata
+            // This records that the transaction was split into parts
+            const decompositionKey = `decomp_${txnId}`;
+            const decompositionData = {
+                originalTxnId: txnId,
+                originalAmount: containerAmount,
+                splits: [
+                    {
+                        amount: expectedAmount,
+                        targetKey: targetKey,
+                        type: 'subscription',
+                        description: `${subscription.merchant} (gap fill)`
+                    },
+                    {
+                        amount: remainder,
+                        targetKey: null, // Stays as one-time 
+                        type: 'remainder',
+                        description: 'Remainder'
+                    }
+                ],
+                createdAt: new Date().toISOString(),
+                missingMonth: suggestion.missingDate?.toISOString()
+            };
+
+            // Store in localStorage for persistence
+            const existingDecomps = JSON.parse(localStorage.getItem('fintrack_decompositions') || '{}');
+            existingDecomps[decompositionKey] = decompositionData;
+            localStorage.setItem('fintrack_decompositions', JSON.stringify(existingDecomps));
+
+            // Assign the transaction to the subscription (fills the gap)
+            setChargeAssignments(prev => {
+                const updated = { ...prev, [txnId]: targetKey };
+                localStorage.setItem('fintrack_charge_assignments', JSON.stringify(updated));
+                return updated;
+            });
+
+            // Mark suggestion as handled
+            setConsolidatedItems(prev => ({
+                ...prev,
+                [decompositionKey]: {
+                    type: 'gap_fill',
+                    subscriptionKey: targetKey,
+                    createdAt: new Date().toISOString()
+                }
+            }));
+
+            console.log(`✅ Filled gap in "${subscription.merchant}" - assigned $${expectedAmount.toFixed(2)} from container transaction`);
+
+            // Log the gap fill transformation
+            logEvent(EventTypes.GAP_FILL, {
+                subscription: subscription.merchant,
+                subscriptionKey: targetKey,
+                containerTxnId: txnId,
+                expectedAmount,
+                containerAmount,
+                remainder,
+                missingMonth: suggestion.missingDate?.toISOString()
+            }, {
+                triggeredBy: TriggerSources.SMART_SUGGESTION,
+                affectedKeys: [targetKey]
+            });
+        } else if (suggestion.type === 'misplaced_transaction') {
+            // Misplaced transaction: reassign from source item to target item
+            const { subscription, sourceItem, misplacedTransaction, transactionAmount } = suggestion;
+
+            if (!subscription || !sourceItem || !misplacedTransaction) {
+                console.error('Misplaced transaction missing required data');
+                return;
+            }
+
+            const txnId = getTransactionId(misplacedTransaction);
+            const targetKey = subscription.merchantKey;
+            const sourceKey = sourceItem.merchantKey;
+
+            // Update charge assignment to point to target
+            setChargeAssignments(prev => {
+                const updated = { ...prev, [txnId]: targetKey };
+                localStorage.setItem('fintrack_charge_assignments', JSON.stringify(updated));
+                return updated;
+            });
+
+            // Mark suggestion as handled
+            const reassignKey = `reassign_${txnId}`;
+            setConsolidatedItems(prev => ({
+                ...prev,
+                [reassignKey]: {
+                    type: 'reassignment',
+                    fromKey: sourceKey,
+                    toKey: targetKey,
+                    transactionAmount,
+                    createdAt: new Date().toISOString()
+                }
+            }));
+
+            console.log(`✅ Reassigned $${transactionAmount.toFixed(2)} from "${sourceItem.merchant}" to "${subscription.merchant}"`);
+
+            // Log the reassignment transformation
+            logEvent(EventTypes.REASSIGN, {
+                transactionId: txnId,
+                fromKey: sourceKey,
+                toKey: targetKey,
+                fromMerchant: sourceItem.merchant,
+                toMerchant: subscription.merchant,
+                amount: transactionAmount
+            }, {
+                triggeredBy: TriggerSources.SMART_SUGGESTION,
+                affectedKeys: [sourceKey, targetKey]
+            });
         }
     };
 
@@ -700,9 +848,22 @@ export default function Subscriptions() {
                 setChargeAssignments(prev => ({ ...prev, ...newAssignments }));
             }
         }
+
+        // Log the approve transformation
+        logEvent(EventTypes.APPROVE, {
+            merchantKey,
+            merchant: sub?.merchant || merchantKey,
+            transactionCount: sub?.allTransactions?.length || 0
+        }, {
+            triggeredBy: TriggerSources.USER,
+            affectedKeys: [merchantKey]
+        });
     };
 
     const denyItem = (merchantKey) => {
+        // Find the subscription before denying for logging
+        const sub = subscriptions.find(s => s.merchantKey === merchantKey);
+
         setDenied(prev => [...prev, merchantKey]);
         setApproved(prev => prev.filter(k => k !== merchantKey));
 
@@ -717,6 +878,15 @@ export default function Subscriptions() {
                 }
             });
             return hasChanges ? updated : prev;
+        });
+
+        // Log the deny transformation
+        logEvent(EventTypes.DENY, {
+            merchantKey,
+            merchant: sub?.merchant || merchantKey
+        }, {
+            triggeredBy: TriggerSources.USER,
+            affectedKeys: [merchantKey]
         });
     };
 
@@ -770,6 +940,82 @@ export default function Subscriptions() {
         if (approved.includes(merchantKey)) {
             denyItem(merchantKey);
         }
+    };
+
+    // Handle undo confirmation - execute inverse operations
+    const handleUndoConfirm = ({ primaryEvent, cascadingEvents, eventIds }) => {
+        // Execute inverse operations for each event
+        // Process in order: cascading first (newest to oldest), then primary
+        const allEvents = [...cascadingEvents, primaryEvent];
+
+        allEvents.forEach(event => {
+            switch (event.type) {
+                case 'RENAME':
+                    // Revert to old name
+                    if (event.data.fromName && event.data.merchantKey) {
+                        setGlobalRenames(prev => ({
+                            ...prev,
+                            [event.data.merchantKey]: {
+                                displayName: event.data.fromName,
+                                originalMerchant: event.data.fromName,
+                                amount: prev[event.data.merchantKey]?.amount
+                            }
+                        }));
+                    }
+                    break;
+
+                case 'CATEGORIZE':
+                    // Revert to old category
+                    if (event.data.fromCategory && event.data.merchantKey) {
+                        setCategoryOverrides(prev => ({
+                            ...prev,
+                            [event.data.merchantKey]: event.data.fromCategory
+                        }));
+                    }
+                    break;
+
+                case 'APPROVE':
+                    // Move back to pending (remove from approved)
+                    if (event.data.merchantKey) {
+                        setApproved(prev => prev.filter(k => k !== event.data.merchantKey));
+                    }
+                    break;
+
+                case 'DENY':
+                    // Remove from denied
+                    if (event.data.merchantKey) {
+                        setDenied(prev => prev.filter(k => k !== event.data.merchantKey));
+                    }
+                    break;
+
+                case 'REASSIGN':
+                    // Reassign back to original
+                    if (event.data.transactionId && event.data.fromKey) {
+                        setChargeAssignments(prev => ({
+                            ...prev,
+                            [event.data.transactionId]: event.data.fromKey
+                        }));
+                    }
+                    break;
+
+                case 'GAP_FILL':
+                    // Remove assignment
+                    if (event.data.containerTxnId) {
+                        setChargeAssignments(prev => {
+                            const updated = { ...prev };
+                            delete updated[event.data.containerTxnId];
+                            return updated;
+                        });
+                    }
+                    break;
+
+                default:
+                    console.log(`Undo not fully implemented for: ${event.type}`);
+            }
+        });
+
+        setShowUndo(false);
+        console.log(`✅ Undone ${allEvents.length} action(s)`);
     };
 
     if (!subscriptions || subscriptions.length === 0) {
@@ -966,6 +1212,46 @@ export default function Subscriptions() {
                     <option value="Active">Active</option>
                     <option value="Expired">Expired</option>
                 </select>
+
+                {/* Timeline Button */}
+                <button
+                    onClick={() => setShowTimeline(true)}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '10px 14px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <Clock size={14} />
+                    History
+                </button>
+
+                {/* Undo Button */}
+                <button
+                    onClick={() => setShowUndo(true)}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '10px 14px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <Undo2 size={14} />
+                    Undo
+                </button>
 
                 {/* Results Count */}
                 {(search || categoryFilter !== 'all' || statusFilter !== 'all') && (
@@ -1466,6 +1752,45 @@ export default function Subscriptions() {
                     }}
                 />
             )}
+
+            {/* Transformation Timeline Modal */}
+            {showTimeline && (
+                <div
+                    onClick={() => setShowTimeline(false)}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.8)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        padding: '40px'
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            width: '100%',
+                            maxWidth: '900px',
+                            height: '80vh',
+                            maxHeight: '700px'
+                        }}
+                    >
+                        <TransformationTimeline onClose={() => setShowTimeline(false)} />
+                    </div>
+                </div>
+            )}
+
+            {/* Undo Preview Panel */}
+            <UndoPreviewPanel
+                isOpen={showUndo}
+                onConfirm={handleUndoConfirm}
+                onCancel={() => setShowUndo(false)}
+            />
         </div >
     );
 }

@@ -1,10 +1,10 @@
 /**
  * Suggestion Card Component
- * Displays individual merge/split suggestions with visual timeline and actions
+ * Displays individual merge/split/gap suggestions with visual timeline and actions
  */
 
 import React, { useState } from 'react';
-import { GitMerge, Scissors, Check, X, Edit3 } from 'lucide-react';
+import { GitMerge, Scissors, Check, X, Edit3, CalendarSearch, ArrowRight, AlertCircle } from 'lucide-react';
 
 /**
  * Generate timeline data for visualization
@@ -67,12 +67,375 @@ export default function SuggestionCard({
     });
 
     const isMerge = suggestion.type === 'merge';
+    const isSplit = suggestion.type === 'split';
+    const isGap = suggestion.type === 'gap_candidate';
+    const isMisplaced = suggestion.type === 'misplaced_transaction';
     const items = suggestion.items || [];
     const timelineData = isMerge ? generateTimelineData(items) : [];
 
     // Colors for different items in timeline
     const colors = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b'];
 
+    // =========================================
+    // MISPLACED TRANSACTION RENDERING
+    // =========================================
+    if (isMisplaced) {
+        const { subscription, missingDate, expectedAmount, sourceItem, misplacedTransaction, transactionAmount, reason } = suggestion;
+        const targetName = globalRenames[subscription?.merchantKey]?.displayName || subscription?.merchant || 'Unknown';
+        const sourceName = globalRenames[sourceItem?.merchantKey]?.displayName || sourceItem?.merchant || 'Unknown';
+
+        return (
+            <div style={{
+                background: 'var(--card-bg)',
+                borderRadius: '10px',
+                border: '1px solid var(--border-color)',
+                overflow: 'hidden'
+            }}>
+                {/* Header - Purple for misplaced */}
+                <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(139, 92, 246, 0.15)',
+                    borderBottom: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <ArrowRight size={18} style={{ color: '#8b5cf6' }} />
+                        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>
+                            Misplaced Transaction
+                        </span>
+                    </div>
+                    <div style={{
+                        background: 'rgba(16, 185, 129, 0.2)',
+                        color: '#10b981',
+                        padding: '4px 10px',
+                        borderRadius: '12px',
+                        fontSize: '0.75rem',
+                        fontWeight: '600'
+                    }}>
+                        {Math.round(suggestion.confidence * 100)}% confidence
+                    </div>
+                </div>
+
+                {/* Content */}
+                <div style={{ padding: '16px' }}>
+                    {/* Visual flow: Source → Target */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '16px'
+                    }}>
+                        {/* Source item */}
+                        <div style={{
+                            flex: 1,
+                            padding: '12px',
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+                                Currently in
+                            </div>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>
+                                {sourceName}
+                            </div>
+                        </div>
+
+                        <ArrowRight size={20} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+
+                        {/* Target item */}
+                        <div style={{
+                            flex: 1,
+                            padding: '12px',
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(16, 185, 129, 0.2)',
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+                                Should be in
+                            </div>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>
+                                {targetName}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Transaction details */}
+                    <div style={{
+                        padding: '12px',
+                        background: 'rgba(0, 0, 0, 0.2)',
+                        borderRadius: '8px',
+                        marginBottom: '16px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <div style={{ fontWeight: '500', marginBottom: '4px', fontSize: '0.85rem' }}>
+                                    {misplacedTransaction?.description || 'Transaction'}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                    {new Date(misplacedTransaction?.date).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                    })}
+                                    {' '}• Missing from {targetName}
+                                </div>
+                            </div>
+                            <div style={{ fontWeight: '600', color: '#8b5cf6', fontSize: '1rem' }}>
+                                ${transactionAmount?.toFixed(2)}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Reason */}
+                    <div style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--text-secondary)',
+                        marginBottom: '16px'
+                    }}>
+                        {reason?.details?.map((detail, idx) => (
+                            <div key={idx}>• {detail}</div>
+                        ))}
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                            onClick={() => onApprove({ ...suggestion, mergedName })}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'var(--accent-primary)',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: 'white',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '0.85rem',
+                                fontWeight: '500'
+                            }}
+                        >
+                            <Check size={14} />
+                            Reassign
+                        </button>
+                        <button
+                            onClick={onDismiss}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'rgba(239, 68, 68, 0.2)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '6px',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '0.85rem'
+                            }}
+                        >
+                            <X size={14} />
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // =========================================
+    // GAP CANDIDATE RENDERING
+    // =========================================
+    if (isGap) {
+        const { subscription, missingDate, expectedAmount, containerTransaction, containerAmount, remainder, reason } = suggestion;
+        const displayName = globalRenames[subscription?.merchantKey]?.displayName || subscription?.merchant || 'Unknown';
+
+        return (
+            <div style={{
+                background: 'var(--card-bg)',
+                borderRadius: '10px',
+                border: '1px solid var(--border-color)',
+                overflow: 'hidden'
+            }}>
+                {/* Header - Orange for gaps */}
+                <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    borderBottom: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <CalendarSearch size={18} style={{ color: '#f59e0b' }} />
+                        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>
+                            Missing Month Detected
+                        </span>
+                    </div>
+                    <div style={{
+                        background: suggestion.confidence >= 0.7
+                            ? 'rgba(16, 185, 129, 0.2)'
+                            : 'rgba(245, 158, 11, 0.2)',
+                        color: suggestion.confidence >= 0.7
+                            ? '#10b981'
+                            : '#f59e0b',
+                        padding: '4px 10px',
+                        borderRadius: '12px',
+                        fontSize: '0.75rem',
+                        fontWeight: '600'
+                    }}>
+                        {Math.round(suggestion.confidence * 100)}% confidence
+                    </div>
+                </div>
+
+                {/* Content */}
+                <div style={{ padding: '16px' }}>
+                    {/* Subscription info */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '16px',
+                        padding: '12px',
+                        background: 'rgba(0, 0, 0, 0.2)',
+                        borderRadius: '8px',
+                        borderLeft: '3px solid #f59e0b'
+                    }}>
+                        <AlertCircle size={20} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                        <div>
+                            <div style={{ fontWeight: '600', marginBottom: '2px' }}>
+                                {displayName}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                Missing: <strong>{missingDate?.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong>
+                                {' '}(expected ~${expectedAmount?.toFixed(2)})
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Container transaction */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '16px'
+                    }}>
+                        <div style={{ flex: 1, textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            Potential container found
+                        </div>
+                    </div>
+
+                    <div style={{
+                        padding: '12px',
+                        background: 'rgba(59, 130, 246, 0.1)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(59, 130, 246, 0.2)',
+                        marginBottom: '16px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                                <div style={{ fontWeight: '500', marginBottom: '4px', fontSize: '0.85rem' }}>
+                                    {containerTransaction?.description || containerTransaction?.merchant || 'Transaction'}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                    {new Date(containerTransaction?.date).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                    })}
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontWeight: '600', color: '#3b82f6' }}>
+                                    ${containerAmount?.toFixed(2)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Breakdown */}
+                    <div style={{
+                        padding: '12px',
+                        background: 'rgba(0, 0, 0, 0.15)',
+                        borderRadius: '8px',
+                        marginBottom: '16px'
+                    }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                            Suggested breakdown:
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '0.85rem' }}>{displayName} (subscription)</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '500' }}>${expectedAmount?.toFixed(2)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Remainder</span>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>${remainder?.toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    {/* Reason */}
+                    <div style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--text-secondary)',
+                        marginBottom: '16px'
+                    }}>
+                        {reason?.details?.map((detail, idx) => (
+                            <div key={idx}>• {detail}</div>
+                        ))}
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                            onClick={() => onApprove({ ...suggestion, mergedName })}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'var(--accent-primary)',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: 'white',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '0.85rem',
+                                fontWeight: '500'
+                            }}
+                        >
+                            <Check size={14} />
+                            Investigate
+                        </button>
+                        <button
+                            onClick={onDismiss}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'rgba(239, 68, 68, 0.2)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '6px',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '0.85rem'
+                            }}
+                        >
+                            <X size={14} />
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // =========================================
+    // MERGE / SPLIT RENDERING (existing)
+    // =========================================
     return (
         <div style={{
             background: 'var(--card-bg)',

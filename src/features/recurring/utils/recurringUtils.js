@@ -7,6 +7,59 @@ export function amountsMatch(a, b) {
     return Math.abs(a - b) / Math.max(a, b) < 0.03;
 }
 
+/**
+ * Recalculate frequency from an array of transactions
+ * This should be called whenever an item's transactions change (merge, split, reassign)
+ * @param {Array} transactions - Array of transaction objects with date property
+ * @returns {string} Frequency string: Weekly, Bi-Weekly, Monthly, Quarterly, Yearly, or Frequent
+ */
+export function recalculateFrequency(transactions) {
+    if (!transactions || transactions.length < 2) {
+        return 'Monthly'; // Default for insufficient data
+    }
+
+    // Sort by date ascending
+    const sorted = [...transactions].sort((a, b) => {
+        const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+        const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+        return dateA - dateB;
+    });
+
+    // Calculate intervals between consecutive transactions
+    const intervals = [];
+    for (let i = 1; i < sorted.length; i++) {
+        const dateA = sorted[i - 1].date instanceof Date ? sorted[i - 1].date : new Date(sorted[i - 1].date);
+        const dateB = sorted[i].date instanceof Date ? sorted[i].date : new Date(sorted[i].date);
+        const daysDiff = (dateB - dateA) / (1000 * 60 * 60 * 24);
+
+        // Skip invalid intervals (NaN or negative)
+        if (isFinite(daysDiff) && daysDiff > 0) {
+            intervals.push(daysDiff);
+        }
+    }
+
+    if (intervals.length === 0) {
+        return 'Monthly'; // Default if no valid intervals
+    }
+
+    // Calculate average interval
+    const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+
+    // Determine frequency with tolerance ranges
+    if (avgInterval >= 5 && avgInterval <= 10) return 'Weekly';
+    if (avgInterval >= 12 && avgInterval <= 18) return 'Bi-Weekly';
+    if (avgInterval >= 20 && avgInterval <= 45) return 'Monthly';
+    if (avgInterval >= 75 && avgInterval <= 110) return 'Quarterly';
+    if (avgInterval >= 340 && avgInterval <= 400) return 'Yearly';
+
+    // For intervals outside standard ranges, make best guess
+    if (avgInterval < 12) return 'Weekly';
+    if (avgInterval < 20) return 'Bi-Weekly';
+    if (avgInterval < 75) return 'Monthly';
+    if (avgInterval < 340) return 'Quarterly';
+    return 'Yearly';
+}
+
 // Minimum occurrences to qualify as recurring
 const MIN_OCCURRENCES = 2;
 const MIN_YEARLY_OCCURRENCES = 2; // Lower threshold for yearly (only 2 data points over 1-2 years)

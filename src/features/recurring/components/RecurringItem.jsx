@@ -6,8 +6,10 @@ import {
 import { useTransactions } from '../../../context/TransactionContext';
 import { ALL_CATEGORIES } from '../../../utils/constants';
 import { saveCategoryRule } from '../../../utils/categorize';
+import { logEvent, EventTypes, TriggerSources } from '../../../utils/transformationLog';
 import PaymentTimeline from './PaymentTimeline';
 import PaymentHistory from './PaymentHistory';
+import ItemLineage from './ItemLineage';
 import Dropdown from '../../../components/Dropdown';
 import styles from './RecurringItem.module.css';
 
@@ -42,6 +44,7 @@ export default function RecurringItem({
     const [shareOpen, setShareOpen] = useState(false);
     const [emailOpen, setEmailOpen] = useState(false);
     const [newEmailInput, setNewEmailInput] = useState('');
+    const [lineageExpanded, setLineageExpanded] = useState(false);
 
     // Refs for dropdown trigger elements (used by Dropdown component for positioning)
     const categoryRef = useRef(null);
@@ -57,6 +60,7 @@ export default function RecurringItem({
 
     const saveRename = (e) => {
         e?.stopPropagation();
+        const previousName = globalRenames[sub.merchantKey]?.displayName || sub.displayName || sub.merchant;
         if (renameInput.trim()) {
             setGlobalRenames(prev => ({
                 ...prev,
@@ -66,6 +70,16 @@ export default function RecurringItem({
                     amount: sub.latestAmount
                 }
             }));
+
+            // Log the rename transformation
+            logEvent(EventTypes.RENAME, {
+                merchantKey: sub.merchantKey,
+                fromName: previousName,
+                toName: renameInput.trim()
+            }, {
+                triggeredBy: TriggerSources.USER,
+                affectedKeys: [sub.merchantKey]
+            });
         }
         setIsRenaming(false);
     };
@@ -112,6 +126,17 @@ export default function RecurringItem({
         if (recategorizeAll) {
             recategorizeAll();
         }
+
+        // Log the category change
+        logEvent(EventTypes.CATEGORIZE, {
+            merchantKey: sub.merchantKey,
+            merchant: sub.merchant,
+            fromCategory: sub.effectiveCategory || sub.category || 'UNKNOWN',
+            toCategory: cat
+        }, {
+            triggeredBy: TriggerSources.USER,
+            affectedKeys: [sub.merchantKey]
+        });
 
         setCategoryOpen(false);
     };
@@ -201,6 +226,16 @@ export default function RecurringItem({
             }
             return hasChanges ? updated : prev;
         });
+
+        // Log the delete transformation
+        logEvent(EventTypes.DELETE, {
+            merchantKey: sub.merchantKey,
+            merchant: sub.merchant,
+            wasManual: sub.isManual || true
+        }, {
+            triggeredBy: TriggerSources.USER,
+            affectedKeys: [sub.merchantKey]
+        });
     };
 
     // Revert to Pending Handler
@@ -258,6 +293,16 @@ export default function RecurringItem({
                 localStorage.setItem('fintrack_charge_assignments', JSON.stringify(updated));
             }
             return hasChanges ? updated : prev;
+        });
+
+        // Log the unmerge transformation
+        logEvent(EventTypes.UNMERGE, {
+            targetKey: sub.merchantKey,
+            displayName: sub.merchant,
+            originalSources: mergedSubscriptions[sub.merchantKey]?.mergedFrom || []
+        }, {
+            triggeredBy: TriggerSources.USER,
+            affectedKeys: [sub.merchantKey, ...(mergedSubscriptions[sub.merchantKey]?.mergedFrom || [])]
         });
     };
 
@@ -753,6 +798,13 @@ export default function RecurringItem({
                             </div>
                         </div>
                     </div>
+
+                    {/* Item Lineage (Transformation History) */}
+                    <ItemLineage
+                        merchantKey={sub.merchantKey}
+                        expanded={lineageExpanded}
+                        onToggle={() => setLineageExpanded(!lineageExpanded)}
+                    />
                 </div>
             )}
         </div>

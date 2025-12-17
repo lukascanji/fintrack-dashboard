@@ -1,0 +1,105 @@
+.container {
+    padding: 0 8px;
+}
+
+.dateLabels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+}
+
+.track {
+    position: relative;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.filled {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary, var(--accent-primary)));
+    border-radius: 12px;
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.dot {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.dotGreen {
+    background: #10b981;
+}
+
+.dotBlue {
+    background: #3b82f6;
+}
+
+.dotOrange {
+    background: #f59e0b;
+}
+
+.dotRed {
+    background: #ef4444;
+}
+
+.thumb {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 18px;
+    height: 18px;
+    background: var(--accent-primary);
+    border: 3px solid white;
+    border-radius: 50%;
+    cursor: grab;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: transform 0.1s ease;
+}
+
+.thumbActive {
+    transform: translate(-50%, -50%) scale(1.1);
+    cursor: grabbing;
+}
+
+.quickNav {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.navButton {
+    padding: 6px 12px;
+    font-size: 0.7rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.navButton:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.navButton:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}

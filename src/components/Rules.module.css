@@ -193,3 +193,224 @@
 .deleteBtn:hover {
     background: rgba(239, 68, 68, 0.25);
 }
+
+/* Export Button */
+.exportButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 8px;
+    color: var(--accent-primary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 4px;
+    align-self: flex-start;
+    transition: all 0.15s;
+}
+
+.exportButton:hover {
+    background: rgba(99, 102, 241, 0.25);
+}
+
+/* History Items */
+.historyItem {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.historyIcon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.historyContent {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.historyDesc {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.historyTime {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+}
+
+.historySource {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.65rem;
+    text-transform: capitalize;
+    flex-shrink: 0;
+}
+
+.historySource.user {
+    background: rgba(59, 130, 246, 0.2);
+    color: rgb(59, 130, 246);
+}
+
+.historySource.smart_suggestion {
+    background: rgba(245, 158, 11, 0.2);
+    color: rgb(245, 158, 11);
+}
+
+.historySource.system {
+    background: rgba(156, 163, 175, 0.2);
+    color: rgb(156, 163, 175);
+}
+
+.moreEvents {
+    padding: 12px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+/* Button Row */
+.buttonRow {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.snapshotButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 8px;
+    color: rgb(16, 185, 129);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.snapshotButton:hover {
+    background: rgba(16, 185, 129, 0.25);
+}
+
+.resetButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: rgb(239, 68, 68);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.resetButton:hover {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+.restoreButton {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    color: rgb(59, 130, 246);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.restoreButton:hover {
+    background: rgba(59, 130, 246, 0.25);
+}
+
+/* Modal */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 450px;
+    text-align: center;
+}
+
+.modal h3 {
+    margin: 0 0 16px;
+    font-size: 1.1rem;
+}
+
+.modal p {
+    margin: 0 0 12px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.modalActions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.cancelButton {
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.cancelButton:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.confirmResetButton {
+    padding: 10px 20px;
+    background: rgb(239, 68, 68);
+    border: none;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.confirmResetButton:hover {
+    background: rgb(220, 50, 50);
+}

@@ -515,22 +515,315 @@ function detectAmountClusters(transactions) {
     return clusters.filter(c => c.transactions.length >= 2);
 }
 
+/**
+ * Detect gaps in recurring items where a subscription month might be:
+ * 1. Misplaced in another recurring item (same affiliation)
+ * 2. Bundled into a container transaction
+ * 
+ * @param {Array} recurringItems - All recurring items to check for gaps
+ * @param {Array} allTransactions - All transactions to search for containers
+ * @returns {Array} Gap candidate suggestions
+ */
+function detectGapCandidates(recurringItems, allTransactions) {
+    const suggestions = [];
+
+    if (!recurringItems || recurringItems.length === 0) {
+        return suggestions;
+    }
+
+    // Only check items with consistent patterns (Monthly frequency, 3+ transactions)
+    const candidates = recurringItems.filter(item =>
+        item.frequency === 'Monthly' &&
+        item.count >= 3 &&
+        item.allTransactions?.length >= 3
+    );
+
+    candidates.forEach(item => {
+        const txns = item.allTransactions || [];
+        if (txns.length < 3) return;
+
+        // Sort transactions by date
+        const sortedTxns = [...txns].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // Calculate typical billing day
+        const billingDays = sortedTxns.map(t => new Date(t.date).getDate());
+        const avgBillingDay = Math.round(billingDays.reduce((a, b) => a + b, 0) / billingDays.length);
+
+        // Get date range
+        const firstDate = new Date(sortedTxns[0].date);
+        const lastDate = new Date(sortedTxns[sortedTxns.length - 1].date);
+
+        // Generate expected monthly dates
+        const expectedDates = [];
+        let current = new Date(firstDate.getFullYear(), firstDate.getMonth(), avgBillingDay);
+        while (current <= lastDate) {
+            expectedDates.push(new Date(current));
+            current.setMonth(current.getMonth() + 1);
+        }
+
+        // Map actual months to their transactions
+        const monthToTxn = new Map();
+        sortedTxns.forEach(t => {
+            const d = new Date(t.date);
+            const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            monthToTxn.set(monthKey, t);
+        });
+
+        // Find missing months with before/after context
+        const missingMonths = [];
+        expectedDates.forEach((expected, idx) => {
+            const monthKey = `${expected.getFullYear()}-${String(expected.getMonth() + 1).padStart(2, '0')}`;
+            if (!monthToTxn.has(monthKey)) {
+                // Find transaction before and after the gap
+                let txnBefore = null;
+                let txnAfter = null;
+
+                // Look backwards for previous transaction
+                for (let i = idx - 1; i >= 0; i--) {
+                    const prevKey = `${expectedDates[i].getFullYear()}-${String(expectedDates[i].getMonth() + 1).padStart(2, '0')}`;
+                    if (monthToTxn.has(prevKey)) {
+                        txnBefore = monthToTxn.get(prevKey);
+                        break;
+                    }
+                }
+
+                // Look forwards for next transaction
+                for (let i = idx + 1; i < expectedDates.length; i++) {
+                    const nextKey = `${expectedDates[i].getFullYear()}-${String(expectedDates[i].getMonth() + 1).padStart(2, '0')}`;
+                    if (monthToTxn.has(nextKey)) {
+                        txnAfter = monthToTxn.get(nextKey);
+                        break;
+                    }
+                }
+
+                missingMonths.push({
+                    date: expected,
+                    monthKey,
+                    txnBefore,
+                    txnAfter
+                });
+            }
+        });
+
+        if (missingMonths.length === 0) return;
+
+        // Get affiliation for this item
+        const itemAffiliation = getAffiliation(
+            item.merchantKey,
+            item.baseMerchant || item.merchant,
+            item.displayName
+        );
+
+        // For each missing month, search for the transaction
+        missingMonths.forEach(({ date: missingDate, monthKey, txnBefore, txnAfter }) => {
+            const missingMonth = missingDate.getMonth();
+            const missingYear = missingDate.getFullYear();
+
+            // Determine expected amounts (handle price change boundary)
+            const amountBefore = txnBefore ? (txnBefore.debit || txnBefore.amount || 0) : null;
+            const amountAfter = txnAfter ? (txnAfter.debit || txnAfter.amount || 0) : null;
+
+            const expectedAmounts = new Set();
+            if (amountBefore) expectedAmounts.add(parseFloat(amountBefore.toFixed(2)));
+            if (amountAfter) expectedAmounts.add(parseFloat(amountAfter.toFixed(2)));
+
+            // Fallback to average if no before/after
+            if (expectedAmounts.size === 0) {
+                const amounts = sortedTxns.map(t => t.debit || t.amount || 0);
+                const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+                expectedAmounts.add(parseFloat(avgAmount.toFixed(2)));
+            }
+
+            // Search window: ±5 days from expected billing day
+            const searchStart = new Date(missingYear, missingMonth, avgBillingDay - 5);
+            const searchEnd = new Date(missingYear, missingMonth, avgBillingDay + 5);
+
+            // PRIORITY 1: Search in OTHER recurring items with same affiliation
+            let foundInOtherRecurring = false;
+
+            for (const otherItem of recurringItems) {
+                if (otherItem.merchantKey === item.merchantKey) continue; // Skip self
+
+                const otherAffiliation = getAffiliation(
+                    otherItem.merchantKey,
+                    otherItem.baseMerchant || otherItem.merchant,
+                    otherItem.displayName
+                );
+
+                if (otherAffiliation !== itemAffiliation) continue;
+
+                const otherTxns = otherItem.allTransactions || [];
+
+                for (const otherTxn of otherTxns) {
+                    const txnDate = new Date(otherTxn.date);
+                    const txnAmount = parseFloat((otherTxn.debit || otherTxn.amount || 0).toFixed(2));
+
+                    // Must be in search window
+                    if (txnDate < searchStart || txnDate > searchEnd) continue;
+
+                    // Must match one of the expected amounts (±5% tolerance for tax/currency)
+                    const matchesAmount = [...expectedAmounts].some(exp =>
+                        Math.abs(txnAmount - exp) <= exp * 0.05
+                    );
+
+                    if (matchesAmount) {
+                        // Found misplaced transaction!
+                        const primaryAmount = amountAfter || amountBefore || [...expectedAmounts][0];
+
+                        suggestions.push({
+                            id: `misplaced_${item.merchantKey}_${missingYear}_${missingMonth}_${otherItem.merchantKey}`,
+                            type: 'misplaced_transaction',
+                            confidence: 0.9, // High confidence for exact match
+                            subscription: item,
+                            missingDate: missingDate,
+                            expectedAmount: primaryAmount,
+                            sourceItem: otherItem,
+                            misplacedTransaction: otherTxn,
+                            transactionAmount: txnAmount,
+                            reason: {
+                                primary: `Misplaced charge for ${missingDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`,
+                                details: [
+                                    `Expected ~$${primaryAmount.toFixed(2)} on ~${avgBillingDay}th`,
+                                    `Found: $${txnAmount.toFixed(2)} on ${txnDate.toLocaleDateString()} in "${otherItem.displayName || otherItem.merchant}"`,
+                                    `Reassign to "${item.displayName || item.merchant}"?`
+                                ]
+                            },
+                            dataHash: `${item.merchantKey}:${item.count}:${otherItem.merchantKey}:${txnAmount}`
+                        });
+
+                        foundInOtherRecurring = true;
+                        break; // Found a match, stop searching this item
+                    }
+                }
+
+                if (foundInOtherRecurring) break;
+            }
+
+            // PRIORITY 2: If not found in other recurring, search raw transactions for containers
+            if (!foundInOtherRecurring && allTransactions && allTransactions.length > 0) {
+                const primaryAmount = amountAfter || amountBefore || [...expectedAmounts][0];
+
+                const potentialContainers = allTransactions.filter(t => {
+                    const txnDate = new Date(t.date);
+                    const txnAmount = t.debit || t.amount || 0;
+
+                    // Must be a debit (money out)
+                    if (txnAmount <= 0) return false;
+
+                    // Must be in search window
+                    if (txnDate < searchStart || txnDate > searchEnd) return false;
+
+                    // Must exceed subscription amount (contains bundled charge)
+                    if (txnAmount <= primaryAmount * 0.95) return false;
+
+                    // Must not be too large (< 3x typical to filter unrelated purchases)
+                    if (txnAmount > primaryAmount * 3) return false;
+
+                    // Must match affiliation
+                    const txnAffiliation = getAffiliation(
+                        getMerchantKey(t.description),
+                        t.merchant,
+                        ''
+                    );
+                    if (txnAffiliation !== itemAffiliation) return false;
+
+                    // Must not already be in this subscription's transactions
+                    const txnKey = `${t.date}-${t.description}-${txnAmount}`;
+                    const alreadyIncluded = sortedTxns.some(st => {
+                        const stKey = `${st.date}-${st.description}-${st.debit || st.amount || 0}`;
+                        return stKey === txnKey;
+                    });
+                    if (alreadyIncluded) return false;
+
+                    return true;
+                });
+
+                // Create suggestion for each potential container
+                potentialContainers.forEach(container => {
+                    const containerAmount = container.debit || container.amount || 0;
+                    const remainder = containerAmount - primaryAmount;
+
+                    suggestions.push({
+                        id: `gap_${item.merchantKey}_${missingYear}_${missingMonth}_${container.date}`,
+                        type: 'gap_candidate',
+                        confidence: calculateGapConfidence(item, container, primaryAmount, avgBillingDay),
+                        subscription: item,
+                        missingDate: missingDate,
+                        expectedAmount: primaryAmount,
+                        containerTransaction: container,
+                        containerAmount: containerAmount,
+                        remainder: remainder,
+                        reason: {
+                            primary: `Missing ${missingDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`,
+                            details: [
+                                `Expected ~$${primaryAmount.toFixed(2)} on ~${avgBillingDay}th`,
+                                `Found: $${containerAmount.toFixed(2)} on ${new Date(container.date).toLocaleDateString()}`,
+                                `Remainder: $${remainder.toFixed(2)}`
+                            ]
+                        },
+                        dataHash: `${item.merchantKey}:${item.count}:${containerAmount}`
+                    });
+                });
+            }
+        });
+    });
+
+    return suggestions;
+}
+
+/**
+ * Calculate confidence score for a gap candidate
+ */
+function calculateGapConfidence(subscription, container, expectedAmount, expectedDay) {
+    let confidence = 0.5; // Base confidence for finding a match
+
+    const containerDate = new Date(container.date);
+    const containerDay = containerDate.getDate();
+    const containerAmount = container.debit || container.amount || 0;
+
+    // Billing day alignment (±2 days = +0.2, ±5 days = +0.1)
+    const dayDiff = Math.abs(containerDay - expectedDay);
+    if (dayDiff <= 2) {
+        confidence += 0.2;
+    } else if (dayDiff <= 5) {
+        confidence += 0.1;
+    }
+
+    // Amount contains subscription cleanly (remainder makes sense)
+    const remainder = containerAmount - expectedAmount;
+    if (remainder > 0 && remainder < expectedAmount) {
+        // Remainder is smaller than subscription - likely one-time purchase
+        confidence += 0.15;
+    }
+
+    // Round remainder suggests bundled subscription
+    const roundedRemainder = Math.round(remainder * 100) / 100;
+    if (roundedRemainder % 0.99 < 0.10 || roundedRemainder % 1.00 < 0.10) {
+        // X.99 or whole dollar amount - likely another subscription
+        confidence += 0.1;
+    }
+
+    return Math.min(confidence, 1.0);
+}
+
 // ============================================
 // MAIN EXPORT
 // ============================================
 
 /**
- * Detect all consolidation suggestions (merges and splits)
+ * Detect all consolidation suggestions (merges, splits, and gaps)
  * 
  * @param {Array} allRecurringItems - All approved/manual recurring items
  * @param {Object} dismissedSuggestions - Previously dismissed { [id]: { dataHash } }
  * @param {Object} consolidatedItems - Already consolidated items to skip
+ * @param {Array} allTransactions - All transactions (for gap detection)
  * @returns {Array} Sorted suggestions by confidence
  */
 export function detectConsolidationSuggestions(
     allRecurringItems,
     dismissedSuggestions = {},
-    consolidatedItems = {}
+    consolidatedItems = {},
+    allTransactions = []
 ) {
     if (!allRecurringItems || allRecurringItems.length === 0) {
         return [];
@@ -541,11 +834,12 @@ export function detectConsolidationSuggestions(
         !consolidatedItems[item.merchantKey]
     );
 
-    // Detect merge and split candidates
+    // Detect merge, split, and gap candidates
     const mergeSuggestions = detectMergeCandidates(eligibleItems);
     const splitSuggestions = detectSplitCandidates(eligibleItems);
+    const gapSuggestions = detectGapCandidates(eligibleItems, allTransactions);
 
-    const allSuggestions = [...mergeSuggestions, ...splitSuggestions];
+    const allSuggestions = [...mergeSuggestions, ...splitSuggestions, ...gapSuggestions];
 
     // Filter out dismissed suggestions (unless data has changed)
     const activeSuggestions = allSuggestions.filter(suggestion => {
